@@ -1,0 +1,83 @@
+name: Video Processor
+
+on:
+  workflow_dispatch:
+    inputs:
+      video_url:
+        description: "Direct video URL"
+        required: true
+        type: string
+      subtitle_url:
+        description: "Direct SRT URL"
+        required: true
+        type: string
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg wget
+
+      - name: Download video
+        run: |
+          wget -O input.mkv "${{ inputs.video_url }}"
+
+      - name: Download subtitle
+        run: |
+          wget -O subtitle.srt "${{ inputs.subtitle_url }}"
+
+      - name: Burn subtitle
+        run: |
+          ffmpeg -i input.mkv \
+            -vf "subtitles=subtitle.srt" \
+            -c:v libx264 \
+            -preset veryfast \
+            -crf 23 \
+            -c:a copy \
+            -map 0:v:0 \
+            -map 0:a? \
+            output.mkv
+
+      - name: Send result to Telegram
+        env:
+          API_ID: ${{ secrets.API_ID }}
+          API_HASH: ${{ secrets.API_HASH }}
+          TG_SESSION: ${{ secrets.TG_SESSION }}
+        run: |
+          python -m pip install telethon
+          cat > send.py <<'PY'
+          import os
+          from telethon import TelegramClient
+          from telethon.sessions import StringSession
+
+          api_id = int(os.environ["API_ID"])
+          api_hash = os.environ["API_HASH"]
+          session = os.environ["TG_SESSION"]
+
+          async def main():
+              client = TelegramClient(
+                  StringSession(session),
+                  api_id,
+                  api_hash
+              )
+              await client.start()
+
+              await client.send_file(
+                  "me",
+                  "output.mkv",
+                  caption="تم تجهيز الفيلم وترجمة الـSRT."
+              )
+
+              await client.disconnect()
+
+          with TelegramClient(StringSession(session), api_id, api_hash) as client:
+              client.loop.run_until_complete(main())
+
+      - name: Delete files
+        if: always()
+        run: |
+          rm -f input.mkv subtitle.srt output.mkv send.py
