@@ -17,10 +17,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Install FFmpeg
+      - name: Install FFmpeg and fonts
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg wget
+          sudo apt-get install -y ffmpeg wget fonts-noto-core
 
       - name: Download video
         run: |
@@ -32,14 +32,15 @@ jobs:
 
       - name: Burn subtitle
         run: |
-          ffmpeg -i input.mkv \
+          ffmpeg -y \
+            -i input.mkv \
             -vf "subtitles=subtitle.srt" \
+            -map 0:v:0 \
+            -map 0:a? \
             -c:v libx264 \
             -preset veryfast \
             -crf 23 \
             -c:a copy \
-            -map 0:v:0 \
-            -map 0:a? \
             output.mkv
 
       - name: Send result to Telegram
@@ -48,22 +49,21 @@ jobs:
           API_HASH: ${{ secrets.API_HASH }}
           TG_SESSION: ${{ secrets.TG_SESSION }}
         run: |
-          python -m pip install telethon
+          python -m pip install "telethon<2" cryptg
+
           cat > send.py <<'PY'
           import os
+          import asyncio
           from telethon import TelegramClient
           from telethon.sessions import StringSession
 
-          api_id = int(os.environ["API_ID"])
-          api_hash = os.environ["API_HASH"]
-          session = os.environ["TG_SESSION"]
-
           async def main():
               client = TelegramClient(
-                  StringSession(session),
-                  api_id,
-                  api_hash
+                  StringSession(os.environ["TG_SESSION"]),
+                  int(os.environ["API_ID"]),
+                  os.environ["API_HASH"]
               )
+
               await client.start()
 
               await client.send_file(
@@ -74,8 +74,10 @@ jobs:
 
               await client.disconnect()
 
-          with TelegramClient(StringSession(session), api_id, api_hash) as client:
-              client.loop.run_until_complete(main())
+          asyncio.run(main())
+          PY
+
+          python send.py
 
       - name: Delete files
         if: always()
