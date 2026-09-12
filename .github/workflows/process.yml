@@ -527,6 +527,8 @@ jobs:
 
               await client.start()
 
+              print("📤 Starting Telegram upload...")
+
               await client.send_file(
                   int(os.environ["CHAT_ID"]),
                   os.environ["OUTPUT_FILE"],
@@ -534,6 +536,8 @@ jobs:
                   video=True,
                   supports_streaming=True
               )
+
+              print("✅ Telegram upload completed.")
 
               await client.disconnect()
 
