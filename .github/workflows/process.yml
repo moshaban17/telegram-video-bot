@@ -9,9 +9,10 @@ on:
         type: string
 
       subtitle_url:
-        description: "Direct SRT URL"
-        required: true
+        description: "Direct SRT URL (optional)"
+        required: false
         type: string
+        default: ""
 
       resolution:
         description: "Video resolution"
@@ -29,6 +30,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Install FFmpeg and fonts
         run: |
           sudo apt-get update
@@ -38,7 +40,8 @@ jobs:
         run: |
           wget -O input.mkv "${{ inputs.video_url }}"
 
-      - name: Download subtitle
+      - name: Download subtitle if provided
+        if: ${{ inputs.subtitle_url != '' }}
         run: |
           wget -O subtitle.srt "${{ inputs.subtitle_url }}"
 
@@ -59,11 +62,27 @@ jobs:
               ;;
           esac
 
-      - name: Burn subtitle and resize
+      - name: Process video with subtitle
+        if: ${{ inputs.subtitle_url != '' }}
         run: |
           ffmpeg -y \
             -i input.mkv \
-            -vf "subtitles=subtitle.srt:force_style='FontName=Noto Sans,FontSize=28,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline=1,Shadow=0,Alignment=2',scale=-2:min(ih\,${HEIGHT})" \
+            -vf "subtitles=subtitle.srt:force_style='FontName=Noto Sans,FontSize=28,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline=1,Shadow=0,Alignment=2',scale=-2:${HEIGHT}" \
+            -map 0:v:0 \
+            -map 0:a? \
+            -c:v libx264 \
+            -preset veryfast \
+            -crf 23 \
+            -c:a copy \
+            -movflags +faststart \
+            output.mp4
+
+      - name: Process video without subtitle
+        if: ${{ inputs.subtitle_url == '' }}
+        run: |
+          ffmpeg -y \
+            -i input.mkv \
+            -vf "scale=-2:${HEIGHT}" \
             -map 0:v:0 \
             -map 0:a? \
             -c:v libx264 \
@@ -99,7 +118,9 @@ jobs:
               await client.send_file(
                   "me",
                   "output.mp4",
-                  caption="تم تجهيز الفيلم وترجمة الـSRT."
+                  caption="🎬 تم تجهيز الفيلم بنجاح.",
+                  video=True,
+                  supports_streaming=True
               )
 
               await client.disconnect()
