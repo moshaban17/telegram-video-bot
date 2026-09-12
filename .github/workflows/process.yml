@@ -19,11 +19,17 @@ on:
         required: true
         type: choice
         options:
+          - "same"
           - "1080p"
           - "720p"
           - "480p"
           - "360p"
         default: "720p"
+
+      chat_id:
+        description: "Telegram chat ID"
+        required: true
+        type: string
 
 jobs:
   process:
@@ -48,26 +54,35 @@ jobs:
       - name: Set resolution
         run: |
           case "${{ inputs.resolution }}" in
+            "same")
+              echo "SCALE_FILTER=null" >> "$GITHUB_ENV"
+              ;;
             "1080p")
-              echo "HEIGHT=1080" >> "$GITHUB_ENV"
+              echo "SCALE_FILTER=scale=-2:1080" >> "$GITHUB_ENV"
               ;;
             "720p")
-              echo "HEIGHT=720" >> "$GITHUB_ENV"
+              echo "SCALE_FILTER=scale=-2:720" >> "$GITHUB_ENV"
               ;;
             "480p")
-              echo "HEIGHT=480" >> "$GITHUB_ENV"
+              echo "SCALE_FILTER=scale=-2:480" >> "$GITHUB_ENV"
               ;;
             "360p")
-              echo "HEIGHT=360" >> "$GITHUB_ENV"
+              echo "SCALE_FILTER=scale=-2:360" >> "$GITHUB_ENV"
               ;;
           esac
 
       - name: Process video with subtitle
         if: ${{ inputs.subtitle_url != '' }}
         run: |
+          if [ "${SCALE_FILTER}" = "null" ]; then
+            VIDEO_FILTER="subtitles=subtitle.srt:force_style='FontName=Noto Sans,FontSize=28,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline=1,Shadow=0,Alignment=2'"
+          else
+            VIDEO_FILTER="subtitles=subtitle.srt:force_style='FontName=Noto Sans,FontSize=28,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline=1,Shadow=0,Alignment=2',${SCALE_FILTER}"
+          fi
+
           ffmpeg -y \
             -i input.mkv \
-            -vf "subtitles=subtitle.srt:force_style='FontName=Noto Sans,FontSize=28,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline=1,Shadow=0,Alignment=2',scale=-2:${HEIGHT}" \
+            -vf "$VIDEO_FILTER" \
             -map 0:v:0 \
             -map 0:a? \
             -c:v libx264 \
@@ -82,7 +97,7 @@ jobs:
         run: |
           ffmpeg -y \
             -i input.mkv \
-            -vf "scale=-2:${HEIGHT}" \
+            -vf "${SCALE_FILTER}" \
             -map 0:v:0 \
             -map 0:a? \
             -c:v libx264 \
@@ -97,6 +112,7 @@ jobs:
           API_ID: ${{ secrets.API_ID }}
           API_HASH: ${{ secrets.API_HASH }}
           TG_SESSION: ${{ secrets.TG_SESSION }}
+          CHAT_ID: ${{ inputs.chat_id }}
         run: |
           python -m pip install "telethon<2" cryptg
 
@@ -116,7 +132,7 @@ jobs:
               await client.start()
 
               await client.send_file(
-                  "me",
+                  int(os.environ["CHAT_ID"]),
                   "output.mp4",
                   caption="🎬 تم تجهيز الفيلم بنجاح.",
                   video=True,
@@ -131,5 +147,6 @@ jobs:
           python send.py
 
       - name: Clean files
+        if: always()
         run: |
           rm -f input.mkv subtitle.srt output.mp4 send.py
