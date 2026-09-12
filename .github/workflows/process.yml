@@ -79,7 +79,13 @@ jobs:
           file_id = os.environ["SRT_FILE_ID"]
 
           api = f"https://api.telegram.org/bot{token}/getFile"
-          r = requests.get(api, params={"file_id": file_id}, timeout=30)
+
+          r = requests.get(
+              api,
+              params={"file_id": file_id},
+              timeout=30
+          )
+
           r.raise_for_status()
 
           data = r.json()
@@ -94,7 +100,11 @@ jobs:
               f"{token}/{file_path}"
           )
 
-          r = requests.get(download_url, timeout=60)
+          r = requests.get(
+              download_url,
+              timeout=60
+          )
+
           r.raise_for_status()
 
           with open("input.srt", "wb") as f:
@@ -172,7 +182,10 @@ jobs:
           def parse_srt(text):
               text = text.replace("\r\n", "\n").replace("\r", "\n")
 
-              blocks = re.split(r"\n\s*\n", text.strip())
+              blocks = re.split(
+                  r"\n\s*\n",
+                  text.strip()
+              )
 
               result = []
 
@@ -269,14 +282,20 @@ jobs:
               return batch
 
 
-          with open(INPUT_FILE, "r", encoding="utf-8-sig") as f:
+          with open(
+              INPUT_FILE,
+              "r",
+              encoding="utf-8-sig"
+          ) as f:
               text = f.read()
 
 
           subtitles = parse_srt(text)
 
           if not subtitles:
-              raise RuntimeError("No valid SRT subtitles found.")
+              raise RuntimeError(
+                  "No valid SRT subtitles found."
+              )
 
 
           client = genai.Client(
@@ -288,9 +307,16 @@ jobs:
 
           translated_all = []
 
-          for start in range(0, len(subtitles), BATCH_SIZE):
+          for start in range(
+              0,
+              len(subtitles),
+              BATCH_SIZE
+          ):
 
-              end = min(start + BATCH_SIZE, len(subtitles))
+              end = min(
+                  start + BATCH_SIZE,
+                  len(subtitles)
+              )
 
               batch = subtitles[start:end]
 
@@ -300,9 +326,14 @@ jobs:
                   f"of {len(subtitles)}"
               )
 
-              translated = translate_batch(client, batch)
+              translated = translate_batch(
+                  client,
+                  batch
+              )
 
-              translated_all.extend(translated)
+              translated_all.extend(
+                  translated
+              )
 
               if end < len(subtitles):
                   time.sleep(2)
@@ -313,7 +344,9 @@ jobs:
               "w",
               encoding="utf-8"
           ) as f:
-              f.write(build_srt(translated_all))
+              f.write(
+                  build_srt(translated_all)
+              )
 
 
           print("Translation completed.")
@@ -343,26 +376,57 @@ jobs:
       - name: Fast direct download
         if: ${{ inputs.operation == 'video' && inputs.resolution == 'same' && inputs.subtitle_url == '' }}
         run: |
-          wget -O output.mkv "${{ inputs.video_url }}"
+          sudo apt-get update
+          sudo apt-get install -y aria2
+
+          echo "🚀 Starting multi-connection download..."
+
+          aria2c \
+            --max-connection-per-server=16 \
+            --split=16 \
+            --min-split-size=1M \
+            --file-allocation=none \
+            --continue=true \
+            --summary-interval=5 \
+            --console-log-level=notice \
+            -o output.mkv \
+            "${{ inputs.video_url }}"
 
 
       - name: Install FFmpeg
         if: ${{ inputs.operation == 'video' && (inputs.resolution != 'same' || inputs.subtitle_url != '') }}
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg fonts-noto-core
+          sudo apt-get install -y ffmpeg fonts-noto-core aria2
 
 
       - name: Download video for processing
         if: ${{ inputs.operation == 'video' && (inputs.resolution != 'same' || inputs.subtitle_url != '') }}
         run: |
-          wget -O input.mkv "${{ inputs.video_url }}"
+          echo "🚀 Starting multi-connection download..."
+
+          aria2c \
+            --max-connection-per-server=16 \
+            --split=16 \
+            --min-split-size=1M \
+            --file-allocation=none \
+            --continue=true \
+            --summary-interval=5 \
+            --console-log-level=notice \
+            -o input.mkv \
+            "${{ inputs.video_url }}"
 
 
       - name: Download subtitle
         if: ${{ inputs.operation == 'video' && inputs.subtitle_url != '' }}
         run: |
-          wget -O subtitle.srt "${{ inputs.subtitle_url }}"
+          aria2c \
+            --max-connection-per-server=8 \
+            --split=8 \
+            --min-split-size=1M \
+            --file-allocation=none \
+            -o subtitle.srt \
+            "${{ inputs.subtitle_url }}"
 
 
       - name: Set resolution
