@@ -1,7 +1,12 @@
 import os
 import requests
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+)
+
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -10,6 +15,7 @@ from telegram.ext import (
     ContextTypes,
     filters,
 )
+
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 GH_TOKEN = os.getenv("GH_TOKEN")
@@ -20,14 +26,27 @@ WORKFLOW_FILE = "process.yml"
 
 
 def main_menu():
+
     keyboard = [
         [
-            InlineKeyboardButton("🔗 تحميل من رابط", callback_data="download"),
-            InlineKeyboardButton("🎬 تحويل دقة", callback_data="convert"),
+            InlineKeyboardButton(
+                "🔗 تحميل من رابط",
+                callback_data="download"
+            ),
+            InlineKeyboardButton(
+                "🎬 تحويل دقة",
+                callback_data="convert"
+            ),
         ],
         [
-            InlineKeyboardButton("📝 حرق ترجمة", callback_data="subtitle"),
-            InlineKeyboardButton("🎙️ صوت → SRT", callback_data="speech"),
+            InlineKeyboardButton(
+                "📝 حرق ترجمة",
+                callback_data="subtitle"
+            ),
+            InlineKeyboardButton(
+                "🎙️ صوت → SRT",
+                callback_data="speech"
+            ),
         ],
         [
             InlineKeyboardButton(
@@ -36,12 +55,24 @@ def main_menu():
             ),
         ],
         [
-            InlineKeyboardButton("🔊 إدارة الصوت", callback_data="audio"),
-            InlineKeyboardButton("📦 استخراج ترجمة", callback_data="extract"),
+            InlineKeyboardButton(
+                "🔊 إدارة الصوت",
+                callback_data="audio"
+            ),
+            InlineKeyboardButton(
+                "📦 استخراج ترجمة",
+                callback_data="extract"
+            ),
         ],
         [
-            InlineKeyboardButton("🖼️ Watermark", callback_data="watermark"),
-            InlineKeyboardButton("🔗 ملف → رابط", callback_data="file_link"),
+            InlineKeyboardButton(
+                "🖼️ Watermark",
+                callback_data="watermark"
+            ),
+            InlineKeyboardButton(
+                "🔗 ملف → رابط",
+                callback_data="file_link"
+            ),
         ],
         [
             InlineKeyboardButton(
@@ -55,6 +86,9 @@ def main_menu():
 
 
 async def start(update, context):
+
+    context.user_data.clear()
+
     await update.message.reply_text(
         "🎬 أهلاً بك في بوت معالجة الفيديو.\n\n"
         "اختار الوظيفة المطلوبة:",
@@ -63,7 +97,9 @@ async def start(update, context):
 
 
 async def menu_button(update, context):
+
     query = update.callback_query
+
     await query.answer()
 
     if query.data == "download":
@@ -71,16 +107,20 @@ async def menu_button(update, context):
         context.user_data["mode"] = "download"
 
         await query.edit_message_text(
-            "🔗 ابعت الآن رابط الفيديو المباشر."
+            "🔗 تحميل فيديو\n\n"
+            "📹 ابعت الآن الفيديو هنا، أو ابعت رابط الفيديو المباشر."
         )
+
 
     elif query.data == "convert":
 
         context.user_data["mode"] = "convert"
 
         await query.edit_message_text(
-            "🎬 ابعت رابط الفيديو، وبعدها هتختار الدقة."
+            "🎬 تحويل دقة\n\n"
+            "📹 ابعت الآن الفيديو هنا، أو ابعت رابط الفيديو المباشر."
         )
+
 
     elif query.data == "ocr":
 
@@ -88,7 +128,7 @@ async def menu_button(update, context):
 
         await query.edit_message_text(
             "👁️ استخراج الكلام الظاهر على الشاشة إلى SRT\n\n"
-            "📹 ابعت الآن رابط الفيديو المباشر.\n\n"
+            "📹 ابعت الآن الفيديو هنا، أو ابعت رابط الفيديو المباشر.\n\n"
             "اللغات المدعومة:\n"
             "🇬🇧 English\n"
             "🇱🇰 Sinhala\n"
@@ -96,9 +136,9 @@ async def menu_button(update, context):
             "🇮🇳 Malayalam\n"
             "🇮🇳 Telugu\n"
             "🇮🇳 Tamil\n"
-            "🇧🇩 Bengali\n\n"
-            "📝 سيتم إنشاء ملف SRT بالتوقيتات."
+            "🇧🇩 Bengali"
         )
+
 
     elif query.data == "translate_srt":
 
@@ -109,11 +149,13 @@ async def menu_button(update, context):
             "📄 ابعت الآن ملف SRT."
         )
 
+
     elif query.data == "subtitle":
 
         await query.edit_message_text(
             "📝 وظيفة حرق الترجمة هتتضاف في الخطوة القادمة."
         )
+
 
     elif query.data == "speech":
 
@@ -121,11 +163,13 @@ async def menu_button(update, context):
             "🎙️ تحويل الصوت إلى SRT هيتضاف في الخطوة القادمة."
         )
 
+
     elif query.data == "audio":
 
         await query.edit_message_text(
             "🔊 إدارة مسارات الصوت هتتضاف في الخطوة القادمة."
         )
+
 
     elif query.data == "extract":
 
@@ -133,11 +177,13 @@ async def menu_button(update, context):
             "📦 استخراج الترجمة المدمجة هيتضاف في الخطوة القادمة."
         )
 
+
     elif query.data == "watermark":
 
         await query.edit_message_text(
             "🖼️ إضافة الـWatermark هتتضاف في الخطوة القادمة."
         )
+
 
     elif query.data == "file_link":
 
@@ -146,17 +192,80 @@ async def menu_button(update, context):
         )
 
 
+def github_dispatch(
+    chat_id,
+    operation,
+    source_type="url",
+    video_url="",
+    telegram_message_id="",
+    resolution="same",
+    srt_file_id="",
+    subtitle_url=""
+):
+
+    if not GH_TOKEN:
+
+        raise RuntimeError(
+            "GH_TOKEN غير موجود في Termux."
+        )
+
+
+    api_url = (
+        f"https://api.github.com/repos/"
+        f"{GITHUB_OWNER}/{GITHUB_REPO}/actions/workflows/"
+        f"{WORKFLOW_FILE}/dispatches"
+    )
+
+
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {GH_TOKEN}",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+
+
+    data = {
+        "ref": "main",
+        "inputs": {
+            "video_url": video_url,
+            "subtitle_url": subtitle_url,
+            "resolution": resolution,
+            "chat_id": str(chat_id),
+            "srt_file_id": srt_file_id,
+            "telegram_message_id": str(
+                telegram_message_id
+            ),
+            "source_type": source_type,
+            "operation": operation,
+        },
+    }
+
+
+    response = requests.post(
+        api_url,
+        headers=headers,
+        json=data,
+        timeout=30,
+    )
+
+
+    return response
+
+
 async def receive_text(update, context):
 
-    text = (update.message.text or "").strip()
+    text = (
+        update.message.text or ""
+    ).strip()
 
     mode = context.user_data.get("mode")
 
-    # =========================
-    # VIDEO URL
-    # =========================
 
-    if mode in ("download", "convert", "ocr"):
+    if mode in (
+        "download",
+        "convert",
+        "ocr"
+    ):
 
         if not (
             text.startswith("http://")
@@ -164,10 +273,210 @@ async def receive_text(update, context):
         ):
 
             await update.message.reply_text(
-                "❌ ابعت رابط فيديو مباشر يبدأ بـ http:// أو https://"
+                "❌ الرابط غير صحيح.\n\n"
+                "ابعت رابط فيديو مباشر يبدأ بـ http:// أو https://"
             )
 
             return
+
+
+        chat_id = update.effective_chat.id
+
+
+        if mode == "ocr":
+
+            operation = "video_ocr"
+
+        else:
+
+            operation = "video"
+
+
+        await update.message.reply_text(
+            "⏳ تم استلام الرابط.\n\n"
+            "🚀 جاري تشغيل GitHub..."
+        )
+
+
+        try:
+
+            response = github_dispatch(
+                chat_id=chat_id,
+                operation=operation,
+                source_type="url",
+                video_url=text,
+                telegram_message_id="",
+                resolution="same",
+                srt_file_id="",
+                subtitle_url=""
+            )
+
+
+            if response.status_code == 204:
+
+                if mode == "ocr":
+
+                    await update.message.reply_text(
+                        "✅ بدأ استخراج الكلام من الشاشة.\n\n"
+                        "📥 GitHub يقوم الآن بتحميل الفيديو.\n"
+                        "📤 عند الانتهاء سيصل ملف SRT هنا."
+                    )
+
+                else:
+
+                    await update.message.reply_text(
+                        "✅ بدأ تحميل الفيديو من الرابط.\n\n"
+                        "📥 GitHub يقوم الآن بتحميل الفيديو.\n"
+                        "📤 بعد الانتهاء سيصل الفيديو هنا."
+                    )
+
+
+            else:
+
+                await update.message.reply_text(
+                    "❌ فشل تشغيل GitHub.\n\n"
+                    f"كود الخطأ: {response.status_code}\n"
+                    f"{response.text[:500]}"
+                )
+
+
+        except Exception as e:
+
+            await update.message.reply_text(
+                "❌ حدث خطأ:\n\n"
+                f"{str(e)}"
+            )
+
+
+        return
+
+
+    await update.message.reply_text(
+        "اختار وظيفة من القائمة أولًا:",
+        reply_markup=main_menu(),
+    )
+
+
+async def receive_video(update, context):
+
+    mode = context.user_data.get("mode")
+
+
+    if mode not in (
+        "download",
+        "convert",
+        "ocr"
+    ):
+
+        await update.message.reply_text(
+            "اختار وظيفة من القائمة أولًا:",
+            reply_markup=main_menu(),
+        )
+
+        return
+
+
+    video = update.message.video
+
+
+    if not video:
+
+        return
+
+
+    chat_id = update.effective_chat.id
+
+    message_id = update.message.message_id
+
+
+    if mode == "ocr":
+
+        operation = "video_ocr"
+
+    else:
+
+        operation = "video"
+
+
+    await update.message.reply_text(
+        "⏳ تم استلام الفيديو.\n\n"
+        "📥 سيتم تنزيله مباشرة على GitHub، "
+        "وليس على هاتفك.\n\n"
+        "🚀 جاري تشغيل المعالجة..."
+    )
+
+
+    try:
+
+        response = github_dispatch(
+            chat_id=chat_id,
+            operation=operation,
+            source_type="telegram",
+            video_url="",
+            telegram_message_id=message_id,
+            resolution="same",
+            srt_file_id="",
+            subtitle_url=""
+        )
+
+
+        if response.status_code == 204:
+
+            await update.message.reply_text(
+                "✅ تم تشغيل GitHub.\n\n"
+                "📥 GitHub يقوم الآن بسحب الفيديو من تيليجرام.\n"
+                "📤 بعد انتهاء المعالجة سيصل الناتج هنا."
+            )
+
+        else:
+
+            await update.message.reply_text(
+                "❌ فشل تشغيل GitHub.\n\n"
+                f"كود الخطأ: {response.status_code}\n"
+                f"{response.text[:500]}"
+            )
+
+
+    except Exception as e:
+
+        await update.message.reply_text(
+            "❌ حدث خطأ:\n\n"
+            f"{str(e)}"
+        )
+
+
+async def receive_document(update, context):
+
+    mode = context.user_data.get("mode")
+
+
+    document = update.message.document
+
+
+    if not document:
+
+        return
+
+
+    file_name = (
+        document.file_name or ""
+    )
+
+
+    # =========================
+    # SRT
+    # =========================
+
+    if mode == "translate_srt":
+
+        if not file_name.lower().endswith(".srt"):
+
+            await update.message.reply_text(
+                "❌ لازم تبعت ملف بصيغة SRT."
+            )
+
+            return
+
 
         if not GH_TOKEN:
 
@@ -177,101 +486,154 @@ async def receive_text(update, context):
 
             return
 
+
+        file_id = document.file_id
+
         chat_id = update.effective_chat.id
 
-        if mode == "download":
-
-            resolution = "same"
-            operation = "video"
-
-        elif mode == "convert":
-
-            resolution = "same"
-            operation = "video"
-
-        else:
-
-            resolution = "same"
-            operation = "video_ocr"
 
         await update.message.reply_text(
-            "⏳ تم استلام الرابط.\n\n"
-            "🚀 جاري إرسال الرابط إلى GitHub لمعالجة الفيديو..."
+            "⏳ تم استلام ملف SRT.\n\n"
+            "🤖 جاري إرسال الملف للترجمة..."
         )
 
-        api_url = (
-            f"https://api.github.com/repos/"
-            f"{GITHUB_OWNER}/{GITHUB_REPO}/actions/workflows/"
-            f"{WORKFLOW_FILE}/dispatches"
-        )
-
-        headers = {
-            "Accept": "application/vnd.github+json",
-            "Authorization": f"Bearer {GH_TOKEN}",
-            "X-GitHub-Api-Version": "2022-11-28",
-        }
-
-        data = {
-            "ref": "main",
-            "inputs": {
-                "video_url": text,
-                "subtitle_url": "",
-                "resolution": resolution,
-                "chat_id": str(chat_id),
-                "srt_file_id": "",
-                "operation": operation,
-            },
-        }
 
         try:
 
-            response = requests.post(
-                api_url,
-                headers=headers,
-                json=data,
-                timeout=30,
+            response = github_dispatch(
+                chat_id=chat_id,
+                operation="translate_srt",
+                source_type="url",
+                video_url="",
+                telegram_message_id="",
+                resolution="same",
+                srt_file_id=file_id,
+                subtitle_url=""
             )
+
 
             if response.status_code == 204:
 
-                if mode == "ocr":
-
-                    await update.message.reply_text(
-                        "✅ بدأ استخراج الكلام من الشاشة.\n\n"
-                        "👁️ سيتم فحص الفيديو وقراءة النصوص الظاهرة.\n"
-                        "🌐 اللغات: English / Sinhala / Hindi / Malayalam / "
-                        "Telugu / Tamil / Bengali\n\n"
-                        "📤 عند الانتهاء سيصل ملف SRT هنا تلقائيًا."
-                    )
-
-                else:
-
-                    await update.message.reply_text(
-                        "✅ تم تشغيل المعالجة.\n\n"
-                        "📥 GitHub بدأ تحميل الفيديو.\n"
-                        "📤 بعد الانتهاء سيصل الفيديو هنا تلقائيًا."
-                    )
+                await update.message.reply_text(
+                    "✅ بدأت ترجمة ملف SRT.\n\n"
+                    "📤 عند انتهاء الترجمة سيعود الملف هنا."
+                )
 
             else:
 
                 await update.message.reply_text(
-                    "❌ فشل تشغيل المعالجة.\n\n"
+                    "❌ فشل تشغيل الترجمة.\n\n"
                     f"كود الخطأ: {response.status_code}\n"
                     f"{response.text[:500]}"
                 )
 
+
         except Exception as e:
 
             await update.message.reply_text(
-                "❌ حدث خطأ أثناء تشغيل GitHub:\n"
+                "❌ حدث خطأ:\n\n"
                 f"{str(e)}"
             )
 
+
         return
 
+
     # =========================
-    # OTHER TEXT
+    # VIDEO FILE
     # =========================
+
+    if mode in (
+        "download",
+        "convert",
+        "ocr"
+    ):
+
+        video_extensions = (
+            ".mp4",
+            ".mkv",
+            ".avi",
+            ".mov",
+            ".webm",
+            ".m4v",
+            ".ts"
+        )
+
+
+        if not file_name.lower().endswith(
+            video_extensions
+        ):
+
+            await update.message.reply_text(
+                "❌ الملف ليس فيديو مدعومًا."
+            )
+
+            return
+
+
+        chat_id = update.effective_chat.id
+
+        message_id = update.message.message_id
+
+
+        if mode == "ocr":
+
+            operation = "video_ocr"
+
+        else:
+
+            operation = "video"
+
+
+        await update.message.reply_text(
+            "⏳ تم استلام ملف الفيديو.\n\n"
+            "📥 سيتم تنزيله مباشرة على GitHub، "
+            "وليس على هاتفك.\n\n"
+            "🚀 جاري تشغيل المعالجة..."
+        )
+
+
+        try:
+
+            response = github_dispatch(
+                chat_id=chat_id,
+                operation=operation,
+                source_type="telegram",
+                video_url="",
+                telegram_message_id=message_id,
+                resolution="same",
+                srt_file_id="",
+                subtitle_url=""
+            )
+
+
+            if response.status_code == 204:
+
+                await update.message.reply_text(
+                    "✅ تم تشغيل GitHub.\n\n"
+                    "📥 GitHub يقوم الآن بسحب الفيديو من تيليجرام.\n"
+                    "📤 بعد انتهاء المعالجة سيصل الناتج هنا."
+                )
+
+            else:
+
+                await update.message.reply_text(
+                    "❌ فشل تشغيل GitHub.\n\n"
+                    f"كود الخطأ: {response.status_code}\n"
+                    f"{response.text[:500]}"
+                )
+
+
+        except Exception as e:
+
+            await update.message.reply_text(
+                "❌ حدث خطأ:\n\n"
+                f"{str(e)}"
+            )
+
+
+        return
+
 
     await update.message.reply_text(
         "اختار وظيفة من القائمة أولًا:",
@@ -279,131 +641,47 @@ async def receive_text(update, context):
     )
 
 
-async def receive_document(update, context):
-
-    mode = context.user_data.get("mode")
-
-    if mode != "translate_srt":
-
-        await update.message.reply_text(
-            "اختار وظيفة من القائمة أولًا:",
-            reply_markup=main_menu(),
-        )
-
-        return
-
-    document = update.message.document
-
-    if not document:
-        return
-
-    file_name = document.file_name or ""
-
-    if not file_name.lower().endswith(".srt"):
-
-        await update.message.reply_text(
-            "❌ لازم تبعت ملف بصيغة SRT."
-        )
-
-        return
-
-    if not GH_TOKEN:
-
-        await update.message.reply_text(
-            "❌ GH_TOKEN غير موجود."
-        )
-
-        return
-
-    file_id = document.file_id
-
-    chat_id = update.effective_chat.id
-
-    await update.message.reply_text(
-        "⏳ تم استلام ملف SRT.\n\n"
-        "🤖 جاري إرسال الملف للترجمة..."
-    )
-
-    api_url = (
-        f"https://api.github.com/repos/"
-        f"{GITHUB_OWNER}/{GITHUB_REPO}/actions/workflows/"
-        f"{WORKFLOW_FILE}/dispatches"
-    )
-
-    headers = {
-        "Accept": "application/vnd.github+json",
-        "Authorization": f"Bearer {GH_TOKEN}",
-        "X-GitHub-Api-Version": "2022-11-28",
-    }
-
-    data = {
-        "ref": "main",
-        "inputs": {
-            "video_url": "",
-            "subtitle_url": "",
-            "resolution": "same",
-            "chat_id": str(chat_id),
-            "srt_file_id": file_id,
-            "operation": "translate_srt",
-        },
-    }
-
-    try:
-
-        response = requests.post(
-            api_url,
-            headers=headers,
-            json=data,
-            timeout=30,
-        )
-
-        if response.status_code == 204:
-
-            await update.message.reply_text(
-                "✅ بدأت ترجمة ملف SRT.\n\n"
-                "📤 عند انتهاء الترجمة سيعود الملف هنا."
-            )
-
-        else:
-
-            await update.message.reply_text(
-                "❌ فشل تشغيل الترجمة.\n"
-                f"كود الخطأ: {response.status_code}\n"
-                f"{response.text[:500]}"
-            )
-
-    except Exception as e:
-
-        await update.message.reply_text(
-            "❌ حدث خطأ:\n"
-            f"{str(e)}"
-        )
-
-
 def main():
 
     if not BOT_TOKEN:
 
-        print("❌ BOT_TOKEN غير موجود.")
+        print(
+            "❌ BOT_TOKEN غير موجود."
+        )
 
         return
 
-    app = Application.builder().token(BOT_TOKEN).build()
 
-    app.add_handler(
-        CommandHandler("start", start)
+    app = (
+        Application
+        .builder()
+        .token(BOT_TOKEN)
+        .build()
     )
 
+
     app.add_handler(
-        CallbackQueryHandler(menu_button)
+        CommandHandler(
+            "start",
+            start
+        )
     )
+
+
+    app.add_handler(
+        CallbackQueryHandler(
+            menu_button
+        )
+    )
+
 
     app.add_handler(
         MessageHandler(
-            filters.TEXT & ~filters.COMMAND,
-            receive_text
+            filters.VIDEO,
+            receive_video
         )
     )
+
 
     app.add_handler(
         MessageHandler(
@@ -412,10 +690,23 @@ def main():
         )
     )
 
-    print("🤖 البوت يعمل...")
+
+    app.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            receive_text
+        )
+    )
+
+
+    print(
+        "🤖 البوت يعمل..."
+    )
+
 
     app.run_polling()
 
 
 if __name__ == "__main__":
+
     main()
