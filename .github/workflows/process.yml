@@ -34,14 +34,15 @@ jobs:
         run: |
           ffmpeg -y \
             -i input.mkv \
-            -vf "subtitles=subtitle.srt" \
+            -vf "subtitles=subtitle.srt:force_style='FontName=Noto Sans,FontSize=28,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline=1,Shadow=0,Alignment=2'" \
             -map 0:v:0 \
             -map 0:a? \
             -c:v libx264 \
             -preset veryfast \
             -crf 23 \
             -c:a copy \
-            output.mkv
+            -movflags +faststart \
+            output.mp4
 
       - name: Send result to Telegram
         env:
@@ -68,7 +69,7 @@ jobs:
 
               await client.send_file(
                   "me",
-                  "output.mkv",
+                  "output.mp4",
                   caption="تم تجهيز الفيلم وترجمة الـSRT."
               )
 
@@ -79,7 +80,4 @@ jobs:
 
           python send.py
 
-      - name: Delete files
-        if: always()
-        run: |
-          rm -f input.mkv subtitle.srt output.mkv send.py
+      rm -f input.mkv subtitle.srt output.mp4 send.py
