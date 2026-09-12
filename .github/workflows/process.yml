@@ -32,6 +32,12 @@ on:
         required: true
         type: string
 
+      bot_username:
+        description: "Telegram bot username"
+        required: false
+        type: string
+        default: "CinmalekHardsubBot"
+
       srt_file_id:
         description: "Telegram SRT file ID"
         required: false
@@ -403,6 +409,7 @@ jobs:
           TG_SESSION: ${{ secrets.TG_SESSION }}
           CHAT_ID: ${{ inputs.chat_id }}
           MESSAGE_ID: ${{ inputs.telegram_message_id }}
+          BOT_USERNAME: ${{ inputs.bot_username }}
         run: |
 
           cat > download_telegram.py <<'PY'
@@ -422,12 +429,14 @@ jobs:
               chat_id = int(os.environ["CHAT_ID"])
               message_id = int(os.environ["MESSAGE_ID"])
 
+              bot_username = os.environ["BOT_USERNAME"].strip().lstrip("@")
 
               print("========================================")
               print("🔍 Telegram diagnostic")
               print("========================================")
-              print(f"Chat ID    : {chat_id}")
-              print(f"Message ID : {message_id}")
+              print(f"Chat ID       : {chat_id}")
+              print(f"Message ID    : {message_id}")
+              print(f"Bot username  : @{bot_username}")
 
 
               client = TelegramClient(
@@ -463,68 +472,42 @@ jobs:
 
 
               # ------------------------------------------------
-              # محاولة إيجاد المحادثة من الـ dialogs
+              # الوصول إلى محادثة البوت نفسه
               # ------------------------------------------------
 
-              entity = None
+              print(
+                  f"🔎 Searching for bot: @{bot_username}"
+              )
 
-              print("🔎 Searching Telegram dialogs...")
+              try:
 
-
-              async for dialog in client.iter_dialogs():
-
-                  if dialog.id == chat_id:
-
-                      entity = dialog.entity
-
-                      print(
-                          "✅ Chat found in dialogs:"
-                      )
-
-                      print(
-                          f"   Name: {dialog.name}"
-                      )
-
-                      print(
-                          f"   ID: {dialog.id}"
-                      )
-
-                      break
-
-
-              # ------------------------------------------------
-              # إذا لم نجدها في dialogs نجرب get_entity
-              # ------------------------------------------------
-
-              if entity is None:
-
-                  print(
-                      "⚠️ Chat not found in dialogs."
+                  entity = await client.get_entity(
+                      f"@{bot_username}"
                   )
 
-                  try:
+                  print(
+                      "✅ Bot chat found."
+                  )
 
-                      entity = await client.get_entity(
-                          chat_id
-                      )
+                  print(
+                      f"   Username: "
+                      f"@{getattr(entity, 'username', bot_username)}"
+                  )
 
-                      print(
-                          "✅ Chat found using get_entity."
-                      )
+                  print(
+                      f"   ID: {entity.id}"
+                  )
 
-                  except Exception as e:
-
-                      print(
-                          f"❌ get_entity failed: {e}"
-                      )
-
-
-              if entity is None:
+              except Exception as e:
 
                   await client.disconnect()
 
+                  print(
+                      f"❌ Could not find bot: {e}"
+                  )
+
                   raise RuntimeError(
-                      "Telegram chat could not be resolved."
+                      "Telegram bot could not be resolved."
                   )
 
 
@@ -536,7 +519,6 @@ jobs:
                   "🔎 Searching for Telegram message..."
               )
 
-
               message = None
 
 
@@ -546,6 +528,12 @@ jobs:
                       entity,
                       ids=message_id
                   )
+
+                  if message:
+
+                      print(
+                          "✅ Message found by direct lookup."
+                      )
 
               except Exception as e:
 
@@ -595,11 +583,15 @@ jobs:
                   )
 
                   print(
-                      f"Chat ID    : {chat_id}"
+                      f"Bot         : @{bot_username}"
                   )
 
                   print(
-                      f"Message ID : {message_id}"
+                      f"Chat ID     : {chat_id}"
+                  )
+
+                  print(
+                      f"Message ID  : {message_id}"
                   )
 
                   print(
