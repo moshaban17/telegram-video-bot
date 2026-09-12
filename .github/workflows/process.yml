@@ -24,7 +24,7 @@ on:
           - "720p"
           - "480p"
           - "360p"
-        default: "720p"
+        default: "same"
 
       chat_id:
         description: "Telegram chat ID"
@@ -51,12 +51,20 @@ jobs:
         run: |
           wget -O subtitle.srt "${{ inputs.subtitle_url }}"
 
+      - name: Prepare output
+        run: |
+          if [ "${{ inputs.resolution }}" = "same" ] && [ "${{ inputs.subtitle_url }}" = "" ]; then
+            echo "OUTPUT_FILE=input.mkv" >> "$GITHUB_ENV"
+            echo "MODE=original" >> "$GITHUB_ENV"
+          else
+            echo "OUTPUT_FILE=output.mp4" >> "$GITHUB_ENV"
+            echo "MODE=process" >> "$GITHUB_ENV"
+          fi
+
       - name: Set resolution
+        if: ${{ inputs.resolution != 'same' }}
         run: |
           case "${{ inputs.resolution }}" in
-            "same")
-              echo "SCALE_FILTER=null" >> "$GITHUB_ENV"
-              ;;
             "1080p")
               echo "SCALE_FILTER=scale=-2:1080" >> "$GITHUB_ENV"
               ;;
@@ -74,7 +82,7 @@ jobs:
       - name: Process video with subtitle
         if: ${{ inputs.subtitle_url != '' }}
         run: |
-          if [ "${SCALE_FILTER}" = "null" ]; then
+          if [ "${SCALE_FILTER:-}" = "" ]; then
             VIDEO_FILTER="subtitles=subtitle.srt:force_style='FontName=Noto Sans,FontSize=28,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline=1,Shadow=0,Alignment=2'"
           else
             VIDEO_FILTER="subtitles=subtitle.srt:force_style='FontName=Noto Sans,FontSize=28,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline=1,Shadow=0,Alignment=2',${SCALE_FILTER}"
@@ -92,8 +100,10 @@ jobs:
             -movflags +faststart \
             output.mp4
 
-      - name: Process video without subtitle
-        if: ${{ inputs.subtitle_url == '' }}
+          echo "OUTPUT_FILE=output.mp4" >> "$GITHUB_ENV"
+
+      - name: Convert resolution
+        if: ${{ inputs.subtitle_url == '' && inputs.resolution != 'same' }}
         run: |
           ffmpeg -y \
             -i input.mkv \
@@ -106,6 +116,8 @@ jobs:
             -c:a copy \
             -movflags +faststart \
             output.mp4
+
+          echo "OUTPUT_FILE=output.mp4" >> "$GITHUB_ENV"
 
       - name: Send result to Telegram
         env:
@@ -133,7 +145,7 @@ jobs:
 
               await client.send_file(
                   int(os.environ["CHAT_ID"]),
-                  "output.mp4",
+                  os.environ["OUTPUT_FILE"],
                   caption="🎬 تم تجهيز الفيلم بنجاح.",
                   video=True,
                   supports_streaming=True
@@ -144,6 +156,7 @@ jobs:
           asyncio.run(main())
           PY
 
+          export OUTPUT_FILE="${OUTPUT_FILE}"
           python send.py
 
       - name: Clean files
