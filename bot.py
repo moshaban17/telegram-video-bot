@@ -37,6 +37,9 @@ def main_menu():
             InlineKeyboardButton("🖼️ Watermark", callback_data="watermark"),
             InlineKeyboardButton("🔗 ملف → رابط", callback_data="file_link"),
         ],
+        [
+            InlineKeyboardButton("🌐 ترجمة SRT", callback_data="translate_srt"),
+        ],
     ]
 
     return InlineKeyboardMarkup(keyboard)
@@ -67,6 +70,20 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await query.edit_message_text(
             "🎬 ابعت رابط الفيديو، وبعدها هتختار الدقة."
+        )
+
+    elif query.data == "translate_srt":
+        context.user_data["mode"] = "translate_srt"
+
+        await query.edit_message_text(
+            "🌐 ترجمة SRT إلى العربية الفصحى\n\n"
+            "📄 ابعت الآن ملف SRT.\n\n"
+            "سيتم الحفاظ على:\n"
+            "• أرقام الترجمة\n"
+            "• التوقيتات\n"
+            "• ترتيب السطور\n"
+            "• تنسيق HTML مثل <i> و <font>\n"
+            "• رموز ♪ و ♫"
         )
 
     elif query.data == "subtitle":
@@ -100,172 +117,45 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
-async def receive_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    url = update.message.text.strip()
+async def receive_document(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
     mode = context.user_data.get("mode")
 
-    if mode not in ("download", "convert"):
+    if mode != "translate_srt":
         await update.message.reply_text(
             "اختار وظيفة من القائمة أولًا:",
             reply_markup=main_menu(),
         )
         return
 
-    if not (url.startswith("http://") or url.startswith("https://")):
+    document = update.message.document
+
+    if not document:
+        return
+
+    file_name = document.file_name or ""
+
+    if not file_name.lower().endswith(".srt"):
         await update.message.reply_text(
-            "❌ ابعت رابط يبدأ بـ http:// أو https://"
+            "❌ لازم تبعت ملف بصيغة SRT."
         )
         return
 
-    context.user_data["video_url"] = url
-
-    # تحميل من رابط = بدون اختيار دقة
-    if mode == "download":
-        await start_processing(
-            update,
-            context,
-            resolution="same",
-            message=(
-                "⏳ جاري تحميل الفيلم...\n\n"
-                "🎬 الجودة: الأصلية\n"
-                "📥 التحميل على GitHub."
-            ),
+    if not GH_TOKEN:
+        await update.message.reply_text(
+            "❌ GH_TOKEN غير موجود."
         )
         return
 
-    # تحويل الدقة = هنا فقط يظهر اختيار الدقة
-    keyboard = [
-        [
-            InlineKeyboardButton("نفس الدقة", callback_data="res_same"),
-            InlineKeyboardButton("1080p", callback_data="res_1080"),
-        ],
-        [
-            InlineKeyboardButton("720p", callback_data="res_720"),
-            InlineKeyboardButton("480p", callback_data="res_480"),
-        ],
-        [
-            InlineKeyboardButton("360p", callback_data="res_360"),
-        ],
-    ]
+    file_id = document.file_id
+    chat_id = update.effective_chat.id
 
     await update.message.reply_text(
-        "🎬 اختار الدقة المطلوبة:",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-    )
-
-
-async def start_processing(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-    resolution: str,
-    message: str,
-):
-    video_url = context.user_data.get("video_url")
-
-    if not video_url:
-        await update.message.reply_text(
-            "❌ رابط الفيلم غير موجود. ابعت الرابط من جديد."
-        )
-        return
-
-    if not GH_TOKEN:
-        await update.message.reply_text(
-            "❌ GH_TOKEN غير موجود."
-        )
-        return
-
-    chat_id = update.effective_chat.id
-
-    await update.message.reply_text(message)
-
-    api_url = (
-        f"https://api.github.com/repos/"
-        f"{GITHUB_OWNER}/{GITHUB_REPO}/actions/workflows/"
-        f"{WORKFLOW_FILE}/dispatches"
-    )
-
-    headers = {
-        "Accept": "application/vnd.github+json",
-        "Authorization": f"Bearer {GH_TOKEN}",
-        "X-GitHub-Api-Version": "2022-11-28",
-    }
-
-    data = {
-        "ref": "main",
-        "inputs": {
-            "video_url": video_url,
-            "subtitle_url": "",
-            "resolution": resolution,
-            "chat_id": str(chat_id),
-        },
-    }
-
-    try:
-        response = requests.post(
-            api_url,
-            headers=headers,
-            json=data,
-            timeout=30,
-        )
-
-        if response.status_code == 204:
-            await update.message.reply_text(
-                "✅ بدأ تحميل الفيلم.\n\n"
-                "📤 لما يخلص، النتيجة هتتبعت هنا تلقائيًا."
-            )
-        else:
-            await update.message.reply_text(
-                "❌ فشل تشغيل المعالجة.\n"
-                f"كود الخطأ: {response.status_code}"
-            )
-
-    except Exception as e:
-        await update.message.reply_text(
-            f"❌ حصل خطأ في الاتصال بـ GitHub:\n{e}"
-        )
-
-
-async def choose_resolution(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-    query = update.callback_query
-    await query.answer()
-
-    video_url = context.user_data.get("video_url")
-
-    if not video_url:
-        await query.edit_message_text(
-            "❌ رابط الفيلم غير موجود. ابعت الرابط من جديد."
-        )
-        return
-
-    resolutions = {
-        "res_same": "same",
-        "res_1080": "1080p",
-        "res_720": "720p",
-        "res_480": "480p",
-        "res_360": "360p",
-    }
-
-    resolution = resolutions.get(query.data)
-
-    if not resolution:
-        await query.edit_message_text("❌ اختيار غير صالح.")
-        return
-
-    if not GH_TOKEN:
-        await query.message.reply_text(
-            "❌ GH_TOKEN غير موجود."
-        )
-        return
-
-    chat_id = update.effective_chat.id
-
-    await query.edit_message_text(
-        f"⏳ جاري تجهيز الفيلم...\n\n"
-        f"🎬 الدقة: {resolution}\n"
-        f"📥 التحميل والمعالجة على GitHub."
+        "⏳ تم استلام ملف SRT.\n\n"
+        "🤖 جاري إرساله للترجمة بالذكاء الاصطناعي...\n"
+        "📝 الترجمة ستكون إلى العربية الفصحى."
     )
 
     api_url = (
@@ -283,10 +173,12 @@ async def choose_resolution(
     data = {
         "ref": "main",
         "inputs": {
-            "video_url": video_url,
+            "video_url": "",
             "subtitle_url": "",
-            "resolution": resolution,
+            "resolution": "same",
             "chat_id": str(chat_id),
+            "srt_file_id": file_id,
+            "operation": "translate_srt",
         },
     }
 
@@ -299,57 +191,11 @@ async def choose_resolution(
         )
 
         if response.status_code == 204:
-            await query.message.reply_text(
-                "✅ بدأ تحميل الفيلم ومعالجته.\n\n"
-                "📤 لما يخلص، النتيجة هتتبعت هنا تلقائيًا."
+            await update.message.reply_text(
+                "✅ بدأت ترجمة ملف SRT.\n\n"
+                "📤 لما تخلص، هيرجع لك الملف العربي هنا تلقائيًا."
             )
         else:
-            await query.message.reply_text(
-                "❌ فشل تشغيل المعالجة.\n"
-                f"كود الخطأ: {response.status_code}"
-            )
-
-    except Exception as e:
-        await query.message.reply_text(
-            f"❌ حصل خطأ في الاتصال بـ GitHub:\n{e}"
-        )
-
-
-def main():
-    if not BOT_TOKEN:
-        raise RuntimeError("BOT_TOKEN غير موجود")
-
-    if not GH_TOKEN:
-        raise RuntimeError("GH_TOKEN غير موجود")
-
-    app = Application.builder().token(BOT_TOKEN).build()
-
-    app.add_handler(CommandHandler("start", start))
-
-    app.add_handler(
-        CallbackQueryHandler(
-            menu_button,
-            pattern=r"^(download|convert|subtitle|speech|audio|extract|watermark|file_link)$"
-        )
-    )
-
-    app.add_handler(
-        CallbackQueryHandler(
-            choose_resolution,
-            pattern=r"^res_"
-        )
-    )
-
-    app.add_handler(
-        MessageHandler(
-            filters.TEXT & ~filters.COMMAND,
-            receive_text,
-        )
-    )
-
-    print("Bot is running...")
-    app.run_polling()
-
-
-if __name__ == "__main__":
-    main()
+            await update.message.reply_text(
+                "❌ فشل تشغيل الترجمة.\n"
+                f"كود الخط
