@@ -5,11 +5,12 @@ on:
     inputs:
       video_url:
         description: "Direct video URL"
-        required: true
+        required: false
         type: string
+        default: ""
 
       subtitle_url:
-        description: "Direct SRT URL (optional)"
+        description: "Direct SRT URL"
         required: false
         type: string
         default: ""
@@ -31,35 +32,341 @@ on:
         required: true
         type: string
 
+      srt_file_id:
+        description: "Telegram SRT file ID"
+        required: false
+        type: string
+        default: ""
+
+      operation:
+        description: "Operation"
+        required: false
+        type: choice
+        options:
+          - "video"
+          - "translate_srt"
+        default: "video"
+
+
 jobs:
   process:
+
     runs-on: ubuntu-latest
 
     steps:
 
+      # ============================================================
+      # SRT TRANSLATION
+      # ============================================================
+
+      - name: Install Python packages for SRT translation
+        if: ${{ inputs.operation == 'translate_srt' }}
+        run: |
+          python -m pip install --upgrade pip
+          pip install google-genai
+
+      - name: Download SRT from Telegram
+        if: ${{ inputs.operation == 'translate_srt' }}
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          SRT_FILE_ID: ${{ inputs.srt_file_id }}
+        run: |
+          python - <<'PY'
+          import os
+          import requests
+
+          token = os.environ["BOT_TOKEN"]
+          file_id = os.environ["SRT_FILE_ID"]
+
+          api = f"https://api.telegram.org/bot{token}/getFile"
+          r = requests.get(api, params={"file_id": file_id}, timeout=30)
+          r.raise_for_status()
+
+          data = r.json()
+
+          if not data.get("ok"):
+              raise RuntimeError(data)
+
+          file_path = data["result"]["file_path"]
+
+          download_url = (
+              f"https://api.telegram.org/file/bot"
+              f"{token}/{file_path}"
+          )
+
+          r = requests.get(download_url, timeout=60)
+          r.raise_for_status()
+
+          with open("input.srt", "wb") as f:
+              f.write(r.content)
+
+          print("SRT downloaded successfully.")
+          PY
+
+      - name: Translate SRT with Gemini
+        if: ${{ inputs.operation == 'translate_srt' }}
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+
+          cat > translate_srt.py <<'PY'
+          import os
+          import re
+          import time
+          from google import genai
+
+          INPUT_FILE = "input.srt"
+          OUTPUT_FILE = "arabic.srt"
+
+          MODEL = "gemini-3.8-flash"
+
+          PROMPT = r"""
+          أنت مترجم محترف لترجمة الأفلام والمسلسلات إلى العربية الفصحى.
+
+          مهمتك ترجمة نصوص الحوار إلى العربية الفصحى الطبيعية والسينمائية.
+
+          قواعد الترجمة الإلزامية:
+
+          1. افهم المعنى والسياق قبل الترجمة.
+          2. لا تترجم الكلمات أو العبارات حرفيًا عندما يكون لها معنى اصطلاحي.
+          3. ميّز بين المتحدث والمخاطَب قدر الإمكان من السياق.
+          4. راعِ جنس المتحدث والمخاطَب: مذكر/مؤنث.
+          5. حافظ على اتساق أسماء الشخصيات والمصطلحات في جميع المقاطع.
+          6. إذا تكررت الجملة أو العبارة بنفس المعنى، استخدم نفس الترجمة قدر الإمكان.
+          7. الشتائم والإهانات تُترجم بوضوح وبنفس مستوى القوة الموجود في الأصل.
+             لا تُلطّف الإهانة ولا تحذفها، ولا تجعلها أقوى من الأصل.
+          8. لا تستخدم ترجمة حرفية غريبة للتعبيرات العامية.
+          9. مثال:
+             Hey man = يا رجل
+             Hey Ahmed = يا أحمد
+             Wow = يا للروعة
+             Oh my God = يا إلهي
+          10. حسب السياق:
+              Grandpa / Grandfather عند النداء = أيها الجد
+              Teacher / Master عند النداء = أيها المعلم
+          11. لا تستبدل كلمة God تلقائيًا بـ"الله" إذا كان المقصود في السياق هو "إله".
+          12. استخدم العربية الفصحى، وليس العامية المصرية أو الشامية أو الخليجية.
+          13. اجعل الجمل طبيعية وقابلة للعرض كترجمة فيلم.
+          14. لا تضف شرحًا أو ملاحظات أو تعليقات.
+          15. لا تضف علامات اقتباس من عندك.
+          16. لا تغيّر أرقام المقاطع أو التوقيتات.
+          17. لا تغيّر ترتيب المقاطع.
+          18. لا تغيّر أي HTML أو تنسيق موجود داخل النص مثل:
+              <i>
+              </i>
+              <font ...>
+              </font>
+          19. حافظ على رموز الموسيقى ♪ و ♫ كما هي.
+          20. لا تحذف أي مقطع.
+          21. لا تضف أي مقطع جديد.
+          22. ترجم النص فقط.
+
+          سيتم إعطاؤك مجموعة من مقاطع SRT.
+
+          أعد نفس المقاطع بنفس الأرقام والتوقيتات والترتيب.
+          غيّر فقط نص الحوار إلى العربية.
+
+          لا تكتب أي شيء خارج مقاطع SRT.
+          """
+
+          def parse_srt(text):
+              text = text.replace("\r\n", "\n").replace("\r", "\n")
+
+              blocks = re.split(r"\n\s*\n", text.strip())
+
+              result = []
+
+              for block in blocks:
+                  lines = block.split("\n")
+
+                  if len(lines) < 3:
+                      continue
+
+                  number = lines[0]
+                  timing = lines[1]
+                  subtitle = "\n".join(lines[2:])
+
+                  result.append({
+                      "number": number,
+                      "timing": timing,
+                      "text": subtitle
+                  })
+
+              return result
+
+
+          def build_srt(blocks):
+              output = []
+
+              for block in blocks:
+                  output.append(block["number"])
+                  output.append(block["timing"])
+                  output.append(block["text"])
+                  output.append("")
+
+              return "\n".join(output)
+
+
+          def extract_answer(text):
+              text = text.strip()
+
+              if text.startswith("```"):
+                  lines = text.splitlines()
+
+                  if lines and lines[0].startswith("```"):
+                      lines = lines[1:]
+
+                  if lines and lines[-1].strip() == "```":
+                      lines = lines[:-1]
+
+                  text = "\n".join(lines)
+
+              return text.strip()
+
+
+          def translate_batch(client, batch):
+
+              source = build_srt(batch)
+
+              prompt = PROMPT + """
+
+          هذه هي المقاطع التي يجب ترجمتها:
+
+          """ + source
+
+              response = client.models.generate_content(
+                  model=MODEL,
+                  contents=prompt,
+                  config={
+                      "temperature": 0.2
+                  }
+              )
+
+              answer = extract_answer(response.text)
+
+              translated = parse_srt(answer)
+
+              if len(translated) != len(batch):
+                  raise RuntimeError(
+                      f"Gemini returned {len(translated)} blocks "
+                      f"but expected {len(batch)}"
+                  )
+
+              for original, new in zip(batch, translated):
+
+                  if original["number"] != new["number"]:
+                      raise RuntimeError(
+                          "Subtitle numbering changed."
+                      )
+
+                  if original["timing"] != new["timing"]:
+                      raise RuntimeError(
+                          "Subtitle timing changed."
+                      )
+
+                  original["text"] = new["text"]
+
+              return batch
+
+
+          with open(INPUT_FILE, "r", encoding="utf-8-sig") as f:
+              text = f.read()
+
+
+          subtitles = parse_srt(text)
+
+          if not subtitles:
+              raise RuntimeError("No valid SRT subtitles found.")
+
+
+          client = genai.Client(
+              api_key=os.environ["GEMINI_API_KEY"]
+          )
+
+
+          BATCH_SIZE = 80
+
+          translated_all = []
+
+          for start in range(0, len(subtitles), BATCH_SIZE):
+
+              end = min(start + BATCH_SIZE, len(subtitles))
+
+              batch = subtitles[start:end]
+
+              print(
+                  f"Translating subtitles "
+                  f"{start + 1} - {end} "
+                  f"of {len(subtitles)}"
+              )
+
+              translated = translate_batch(client, batch)
+
+              translated_all.extend(translated)
+
+              if end < len(subtitles):
+                  time.sleep(2)
+
+
+          with open(
+              OUTPUT_FILE,
+              "w",
+              encoding="utf-8"
+          ) as f:
+              f.write(build_srt(translated_all))
+
+
+          print("Translation completed.")
+          PY
+
+          python translate_srt.py
+
+
+      - name: Send translated SRT to Telegram
+        if: ${{ inputs.operation == 'translate_srt' }}
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          CHAT_ID: ${{ inputs.chat_id }}
+        run: |
+          curl -sS \
+            -X POST \
+            "https://api.telegram.org/bot${BOT_TOKEN}/sendDocument" \
+            -F "chat_id=${CHAT_ID}" \
+            -F "document=@arabic.srt" \
+            -F "caption=🇸🇦 تمت ترجمة ملف SRT إلى العربية الفصحى بنجاح."
+
+
+      # ============================================================
+      # VIDEO PROCESSING
+      # ============================================================
+
       - name: Fast direct download
-        if: ${{ inputs.resolution == 'same' && inputs.subtitle_url == '' }}
+        if: ${{ inputs.operation == 'video' && inputs.resolution == 'same' && inputs.subtitle_url == '' }}
         run: |
           wget -O output.mkv "${{ inputs.video_url }}"
 
+
       - name: Install FFmpeg
-        if: ${{ inputs.resolution != 'same' || inputs.subtitle_url != '' }}
+        if: ${{ inputs.operation == 'video' && (inputs.resolution != 'same' || inputs.subtitle_url != '') }}
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg fonts-noto-core
 
+
       - name: Download video for processing
-        if: ${{ inputs.resolution != 'same' || inputs.subtitle_url != '' }}
+        if: ${{ inputs.operation == 'video' && (inputs.resolution != 'same' || inputs.subtitle_url != '') }}
         run: |
           wget -O input.mkv "${{ inputs.video_url }}"
 
+
       - name: Download subtitle
-        if: ${{ inputs.subtitle_url != '' }}
+        if: ${{ inputs.operation == 'video' && inputs.subtitle_url != '' }}
         run: |
           wget -O subtitle.srt "${{ inputs.subtitle_url }}"
 
+
       - name: Set resolution
-        if: ${{ inputs.resolution != 'same' }}
+        if: ${{ inputs.operation == 'video' && inputs.resolution != 'same' }}
         run: |
           case "${{ inputs.resolution }}" in
             "1080p")
@@ -76,8 +383,9 @@ jobs:
               ;;
           esac
 
+
       - name: Process video with subtitle
-        if: ${{ inputs.subtitle_url != '' }}
+        if: ${{ inputs.operation == 'video' && inputs.subtitle_url != '' }}
         run: |
           if [ "${SCALE_FILTER:-}" = "" ]; then
             VIDEO_FILTER="subtitles=subtitle.srt:force_style='FontName=Noto Sans,FontSize=28,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline=1,Shadow=0,Alignment=2'"
@@ -97,8 +405,9 @@ jobs:
             -movflags +faststart \
             output.mp4
 
+
       - name: Convert resolution
-        if: ${{ inputs.subtitle_url == '' && inputs.resolution != 'same' }}
+        if: ${{ inputs.operation == 'video' && inputs.subtitle_url == '' && inputs.resolution != 'same' }}
         run: |
           ffmpeg -y \
             -i input.mkv \
@@ -112,7 +421,9 @@ jobs:
             -movflags +faststart \
             output.mp4
 
+
       - name: Select output
+        if: ${{ inputs.operation == 'video' }}
         run: |
           if [ "${{ inputs.resolution }}" = "same" ] && [ "${{ inputs.subtitle_url }}" = "" ]; then
             echo "OUTPUT_FILE=output.mkv" >> "$GITHUB_ENV"
@@ -120,11 +431,15 @@ jobs:
             echo "OUTPUT_FILE=output.mp4" >> "$GITHUB_ENV"
           fi
 
+
       - name: Install Telegram library
+        if: ${{ inputs.operation == 'video' }}
         run: |
           python -m pip install "telethon<2" cryptg
 
-      - name: Send result to Telegram
+
+      - name: Send video result to Telegram
+        if: ${{ inputs.operation == 'video' }}
         env:
           API_ID: ${{ secrets.API_ID }}
           API_HASH: ${{ secrets.API_HASH }}
@@ -139,6 +454,7 @@ jobs:
           from telethon.sessions import StringSession
 
           async def main():
+
               client = TelegramClient(
                   StringSession(os.environ["TG_SESSION"]),
                   int(os.environ["API_ID"]),
@@ -162,7 +478,15 @@ jobs:
 
           python send.py
 
+
       - name: Clean files
         if: always()
         run: |
-          rm -f input.mkv output.mkv output.mp4 subtitle.srt send.py
+          rm -f input.mkv
+          rm -f output.mkv
+          rm -f output.mp4
+          rm -f subtitle.srt
+          rm -f input.srt
+          rm -f arabic.srt
+          rm -f send.py
+          rm -f translate_srt.py
