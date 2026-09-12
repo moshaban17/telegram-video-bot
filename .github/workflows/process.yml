@@ -429,7 +429,11 @@ jobs:
               chat_id = int(os.environ["CHAT_ID"])
               message_id = int(os.environ["MESSAGE_ID"])
 
-              bot_username = os.environ["BOT_USERNAME"].strip().lstrip("@")
+              bot_username = (
+                  os.environ["BOT_USERNAME"]
+                  .strip()
+                  .lstrip("@")
+              )
 
               print("========================================")
               print("🔍 Telegram diagnostic")
@@ -445,12 +449,11 @@ jobs:
                   api_hash
               )
 
-
               await client.start()
 
 
               # ------------------------------------------------
-              # معرفة الحساب المستخدم في TG_SESSION
+              # معرفة الحساب المستخدم
               # ------------------------------------------------
 
               me = await client.get_me()
@@ -472,61 +475,158 @@ jobs:
 
 
               # ------------------------------------------------
-              # الوصول إلى محادثة البوت نفسه
+              # تحميل الـ dialogs أولًا
+              # ------------------------------------------------
+
+              print("🔄 Loading Telegram dialogs...")
+
+              dialogs = await client.get_dialogs(
+                  limit=None
+              )
+
+              print(
+                  f"📋 Loaded {len(dialogs)} dialogs."
+              )
+
+
+              # ------------------------------------------------
+              # البحث عن البوت داخل الـ dialogs
+              # ------------------------------------------------
+
+              entity = None
+
+              for dialog in dialogs:
+
+                  dialog_entity = dialog.entity
+
+                  username = getattr(
+                      dialog_entity,
+                      "username",
+                      None
+                  )
+
+                  if (
+                      username
+                      and username.lower()
+                      == bot_username.lower()
+                  ):
+
+                      entity = dialog_entity
+
+                      print(
+                          "✅ Bot found inside Telegram dialogs."
+                      )
+
+                      print(
+                          f"   Username: @{username}"
+                      )
+
+                      print(
+                          f"   ID: {entity.id}"
+                      )
+
+                      break
+
+
+              # ------------------------------------------------
+              # إذا لم يوجد في dialogs نستخدم username
+              # ------------------------------------------------
+
+              if entity is None:
+
+                  print(
+                      f"⚠️ Bot not found in dialogs."
+                  )
+
+                  print(
+                      f"🔎 Resolving @{bot_username} directly..."
+                  )
+
+                  try:
+
+                      entity = await client.get_entity(
+                          f"@{bot_username}"
+                      )
+
+                      print(
+                          "✅ Bot chat resolved directly."
+                      )
+
+                      print(
+                          f"   Username: "
+                          f"@{getattr(entity, 'username', bot_username)}"
+                      )
+
+                      print(
+                          f"   ID: {entity.id}"
+                      )
+
+                  except Exception as e:
+
+                      await client.disconnect()
+
+                      print(
+                          f"❌ Could not find bot: {e}"
+                      )
+
+                      raise RuntimeError(
+                          "Telegram bot could not be resolved."
+                      )
+
+
+              # ------------------------------------------------
+              # البحث المباشر عن الرسالة
               # ------------------------------------------------
 
               print(
-                  f"🔎 Searching for bot: @{bot_username}"
+                  "========================================"
               )
-
-              try:
-
-                  entity = await client.get_entity(
-                      f"@{bot_username}"
-                  )
-
-                  print(
-                      "✅ Bot chat found."
-                  )
-
-                  print(
-                      f"   Username: "
-                      f"@{getattr(entity, 'username', bot_username)}"
-                  )
-
-                  print(
-                      f"   ID: {entity.id}"
-                  )
-
-              except Exception as e:
-
-                  await client.disconnect()
-
-                  print(
-                      f"❌ Could not find bot: {e}"
-                  )
-
-                  raise RuntimeError(
-                      "Telegram bot could not be resolved."
-                  )
-
-
-              # ------------------------------------------------
-              # البحث عن الرسالة
-              # ------------------------------------------------
 
               print(
                   f"🔎 Looking for message ID {message_id}..."
               )
 
+              print(
+                  f"🎯 Target bot ID: {entity.id}"
+              )
+
               message = None
+
 
               try:
 
-                  message = await client.get_messages(
+                  found_messages = await client.get_messages(
                       entity,
-                      ids=message_id
+                      ids=[message_id]
                   )
+
+                  if found_messages:
+
+                      if isinstance(
+                          found_messages,
+                          list
+                      ):
+
+                          for item in found_messages:
+
+                              if (
+                                  item
+                                  and item.id
+                                  == message_id
+                              ):
+
+                                  message = item
+                                  break
+
+                      else:
+
+                          if (
+                              found_messages.id
+                              == message_id
+                          ):
+
+                              message = found_messages
+
 
               except Exception as e:
 
@@ -538,7 +638,7 @@ jobs:
               if message:
 
                   print(
-                      "✅ Message found by direct lookup."
+                      "✅ Message found by direct lookup!"
                   )
 
                   print(
@@ -558,14 +658,94 @@ jobs:
                       f"Has media  : {bool(message.media)}"
                   )
 
+
               else:
 
+                  # ------------------------------------------------
+                  # محاولة ثانية باستخدام نافذة ID محددة
+                  # ------------------------------------------------
+
                   print(
-                      "⚠️ Message was NOT found by direct ID."
+                      "⚠️ Direct lookup did not find the message."
                   )
 
                   print(
-                      "🔎 Reading recent messages for diagnosis..."
+                      "🔎 Trying history around the requested ID..."
+                  )
+
+                  try:
+
+                      nearby = await client.get_messages(
+                          entity,
+                          limit=10,
+                          min_id=max(0, message_id - 5),
+                          max_id=message_id + 5
+                      )
+
+                      for item in nearby:
+
+                          print(
+                              f"   Nearby ID: {item.id} | "
+                              f"Media: {bool(item.media)} | "
+                              f"Date: {item.date}"
+                          )
+
+                          if item.id == message_id:
+
+                              message = item
+
+                              print(
+                                  "✅ Message found in ID window!"
+                              )
+
+                              break
+
+                  except Exception as e:
+
+                      print(
+                          f"⚠️ History lookup error: {e}"
+                      )
+
+
+              if message:
+
+                  print(
+                      "========================================"
+                  )
+
+                  print(
+                      "✅ Telegram message found!"
+                  )
+
+                  print(
+                      f"Message ID: {message.id}"
+                  )
+
+                  print(
+                      f"Has media: {bool(message.media)}"
+                  )
+
+                  print(
+                      "========================================"
+                  )
+
+
+              else:
+
+                  # ------------------------------------------------
+                  # تشخيص آخر 20 رسالة
+                  # ------------------------------------------------
+
+                  print(
+                      "========================================"
+                  )
+
+                  print(
+                      "⚠️ Message still NOT found."
+                  )
+
+                  print(
+                      "🔎 Reading latest 20 messages..."
                   )
 
                   count = 0
@@ -586,13 +766,6 @@ jobs:
                   print(
                       f"📋 Checked {count} recent messages."
                   )
-
-
-              # ------------------------------------------------
-              # فشل العثور على الرسالة
-              # ------------------------------------------------
-
-              if not message:
 
                   print(
                       "========================================"
@@ -627,19 +800,6 @@ jobs:
                   raise RuntimeError(
                       "Telegram message not found."
                   )
-
-
-              print(
-                  "✅ Telegram message found!"
-              )
-
-              print(
-                  f"Message ID: {message.id}"
-              )
-
-              print(
-                  f"Has media: {bool(message.media)}"
-              )
 
 
               # ------------------------------------------------
@@ -678,10 +838,6 @@ jobs:
                   f"✅ Telegram video downloaded: {path}"
               )
 
-
-              # ------------------------------------------------
-              # إظهار الحجم
-              # ------------------------------------------------
 
               size = os.path.getsize(path)
 
