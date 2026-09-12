@@ -37,29 +37,26 @@ jobs:
 
     steps:
 
-      - name: Install FFmpeg and fonts
+      - name: Fast direct download
+        if: ${{ inputs.resolution == 'same' && inputs.subtitle_url == '' }}
+        run: |
+          wget -O output.mkv "${{ inputs.video_url }}"
+
+      - name: Install FFmpeg
+        if: ${{ inputs.resolution != 'same' || inputs.subtitle_url != '' }}
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg wget fonts-noto-core
+          sudo apt-get install -y ffmpeg fonts-noto-core
 
-      - name: Download video
+      - name: Download video for processing
+        if: ${{ inputs.resolution != 'same' || inputs.subtitle_url != '' }}
         run: |
           wget -O input.mkv "${{ inputs.video_url }}"
 
-      - name: Download subtitle if provided
+      - name: Download subtitle
         if: ${{ inputs.subtitle_url != '' }}
         run: |
           wget -O subtitle.srt "${{ inputs.subtitle_url }}"
-
-      - name: Prepare output
-        run: |
-          if [ "${{ inputs.resolution }}" = "same" ] && [ "${{ inputs.subtitle_url }}" = "" ]; then
-            echo "OUTPUT_FILE=input.mkv" >> "$GITHUB_ENV"
-            echo "MODE=original" >> "$GITHUB_ENV"
-          else
-            echo "OUTPUT_FILE=output.mp4" >> "$GITHUB_ENV"
-            echo "MODE=process" >> "$GITHUB_ENV"
-          fi
 
       - name: Set resolution
         if: ${{ inputs.resolution != 'same' }}
@@ -100,8 +97,6 @@ jobs:
             -movflags +faststart \
             output.mp4
 
-          echo "OUTPUT_FILE=output.mp4" >> "$GITHUB_ENV"
-
       - name: Convert resolution
         if: ${{ inputs.subtitle_url == '' && inputs.resolution != 'same' }}
         run: |
@@ -117,7 +112,17 @@ jobs:
             -movflags +faststart \
             output.mp4
 
-          echo "OUTPUT_FILE=output.mp4" >> "$GITHUB_ENV"
+      - name: Select output
+        run: |
+          if [ "${{ inputs.resolution }}" = "same" ] && [ "${{ inputs.subtitle_url }}" = "" ]; then
+            echo "OUTPUT_FILE=output.mkv" >> "$GITHUB_ENV"
+          else
+            echo "OUTPUT_FILE=output.mp4" >> "$GITHUB_ENV"
+          fi
+
+      - name: Install Telegram library
+        run: |
+          python -m pip install "telethon<2" cryptg
 
       - name: Send result to Telegram
         env:
@@ -125,9 +130,8 @@ jobs:
           API_HASH: ${{ secrets.API_HASH }}
           TG_SESSION: ${{ secrets.TG_SESSION }}
           CHAT_ID: ${{ inputs.chat_id }}
+          OUTPUT_FILE: ${{ env.OUTPUT_FILE }}
         run: |
-          python -m pip install "telethon<2" cryptg
-
           cat > send.py <<'PY'
           import os
           import asyncio
@@ -156,10 +160,9 @@ jobs:
           asyncio.run(main())
           PY
 
-          export OUTPUT_FILE="${OUTPUT_FILE}"
           python send.py
 
       - name: Clean files
         if: always()
         run: |
-          rm -f input.mkv subtitle.srt output.mp4 send.py
+          rm -f input.mkv output.mkv output.mp4 subtitle.srt send.py
