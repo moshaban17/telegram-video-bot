@@ -38,14 +38,17 @@ def main_menu():
             InlineKeyboardButton("🔗 ملف → رابط", callback_data="file_link"),
         ],
         [
-            InlineKeyboardButton("🌐 ترجمة SRT", callback_data="translate_srt"),
+            InlineKeyboardButton(
+                "🌐 ترجمة SRT",
+                callback_data="translate_srt"
+            ),
         ],
     ]
 
     return InlineKeyboardMarkup(keyboard)
 
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def start(update, context):
     await update.message.reply_text(
         "🎬 أهلاً بك في بوت معالجة الفيديو.\n\n"
         "اختار الوظيفة المطلوبة:",
@@ -53,34 +56,30 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def menu_button(update, context):
     query = update.callback_query
     await query.answer()
 
     if query.data == "download":
         context.user_data["mode"] = "download"
+
         await query.edit_message_text(
-            "🔗 ابعت الآن رابط الفيديو المباشر.\n\n"
-            "📌 هيتم تحميله بنفس الدقة الأصلية بدون تحويل."
+            "🔗 ابعت الآن رابط الفيديو المباشر."
         )
 
     elif query.data == "convert":
         context.user_data["mode"] = "convert"
+
         await query.edit_message_text(
             "🎬 ابعت رابط الفيديو، وبعدها هتختار الدقة."
         )
 
     elif query.data == "translate_srt":
         context.user_data["mode"] = "translate_srt"
+
         await query.edit_message_text(
             "🌐 ترجمة SRT إلى العربية الفصحى\n\n"
-            "📄 ابعت الآن ملف SRT.\n\n"
-            "سيتم الحفاظ على:\n"
-            "• أرقام الترجمة\n"
-            "• التوقيتات\n"
-            "• ترتيب السطور\n"
-            "• تنسيق HTML مثل <i> و <font>\n"
-            "• رموز ♪ و ♫"
+            "📄 ابعت الآن ملف SRT."
         )
 
     elif query.data == "subtitle":
@@ -114,7 +113,111 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
-async def receive_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def receive_text(update, context):
+    text = (update.message.text or "").strip()
+    mode = context.user_data.get("mode")
+
+    # =========================
+    # VIDEO URL
+    # =========================
+
+    if mode in ("download", "convert"):
+
+        if not (
+            text.startswith("http://")
+            or text.startswith("https://")
+        ):
+            await update.message.reply_text(
+                "❌ ابعت رابط فيديو مباشر يبدأ بـ http:// أو https://"
+            )
+            return
+
+        if not GH_TOKEN:
+            await update.message.reply_text(
+                "❌ GH_TOKEN غير موجود في Termux."
+            )
+            return
+
+        chat_id = update.effective_chat.id
+
+        if mode == "download":
+            resolution = "same"
+        else:
+            resolution = "same"
+
+        await update.message.reply_text(
+            "⏳ تم استلام الرابط.\n\n"
+            "🚀 جاري إرسال الرابط إلى GitHub لمعالجة الفيديو..."
+        )
+
+        api_url = (
+            f"https://api.github.com/repos/"
+            f"{GITHUB_OWNER}/{GITHUB_REPO}/actions/workflows/"
+            f"{WORKFLOW_FILE}/dispatches"
+        )
+
+        headers = {
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {GH_TOKEN}",
+            "X-GitHub-Api-Version": "2022-11-28",
+        }
+
+        data = {
+            "ref": "main",
+            "inputs": {
+                "video_url": text,
+                "subtitle_url": "",
+                "resolution": resolution,
+                "chat_id": str(chat_id),
+                "srt_file_id": "",
+                "operation": "video",
+            },
+        }
+
+        try:
+            response = requests.post(
+                api_url,
+                headers=headers,
+                json=data,
+                timeout=30,
+            )
+
+            if response.status_code == 204:
+
+                await update.message.reply_text(
+                    "✅ تم تشغيل المعالجة.\n\n"
+                    "📥 GitHub بدأ تحميل الفيديو.\n"
+                    "📤 بعد الانتهاء سيصل الفيديو هنا تلقائيًا."
+                )
+
+            else:
+
+                await update.message.reply_text(
+                    "❌ فشل تشغيل المعالجة.\n\n"
+                    f"كود الخطأ: {response.status_code}\n"
+                    f"{response.text[:500]}"
+                )
+
+        except Exception as e:
+
+            await update.message.reply_text(
+                "❌ حدث خطأ أثناء تشغيل GitHub:\n"
+                f"{str(e)}"
+            )
+
+        return
+
+    # =========================
+    # OTHER TEXT
+    # =========================
+
+    await update.message.reply_text(
+        "اختار وظيفة من القائمة أولًا:",
+        reply_markup=main_menu(),
+    )
+
+
+async def receive_document(update, context):
     mode = context.user_data.get("mode")
 
     if mode != "translate_srt":
@@ -148,8 +251,7 @@ async def receive_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         "⏳ تم استلام ملف SRT.\n\n"
-        "🤖 جاري إرساله للترجمة بالذكاء الاصطناعي...\n"
-        "📝 الترجمة ستكون إلى العربية الفصحى."
+        "🤖 جاري إرسال الملف للترجمة..."
     )
 
     api_url = (
@@ -177,6 +279,7 @@ async def receive_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     }
 
     try:
+
         response = requests.post(
             api_url,
             headers=headers,
@@ -185,11 +288,14 @@ async def receive_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         if response.status_code == 204:
+
             await update.message.reply_text(
                 "✅ بدأت ترجمة ملف SRT.\n\n"
-                "📤 لما تخلص، هيرجع لك الملف العربي هنا تلقائيًا."
+                "📤 عند انتهاء الترجمة سيعود الملف هنا."
             )
+
         else:
+
             await update.message.reply_text(
                 "❌ فشل تشغيل الترجمة.\n"
                 f"كود الخطأ: {response.status_code}\n"
@@ -197,26 +303,47 @@ async def receive_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
     except Exception as e:
+
         await update.message.reply_text(
-            "❌ حصل خطأ أثناء تشغيل الترجمة:\n"
+            "❌ حدث خطأ:\n"
             f"{str(e)}"
         )
 
 
 def main():
+
     if not BOT_TOKEN:
         print("❌ BOT_TOKEN غير موجود.")
         return
 
     app = Application.builder().token(BOT_TOKEN).build()
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(menu_button))
     app.add_handler(
-        MessageHandler(filters.Document.ALL, receive_document)
+        CommandHandler("start", start)
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(menu_button)
+    )
+
+    # استقبال الروابط والنصوص
+    app.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            receive_text
+        )
+    )
+
+    # استقبال ملفات SRT
+    app.add_handler(
+        MessageHandler(
+            filters.Document.ALL,
+            receive_document
+        )
     )
 
     print("🤖 البوت يعمل...")
+
     app.run_polling()
 
 
