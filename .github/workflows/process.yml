@@ -63,7 +63,6 @@ on:
           - "video_ocr"
         default: "video"
 
-
 jobs:
 
   process:
@@ -81,7 +80,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install google-genai requests
-
 
       - name: Download SRT from Telegram
         if: ${{ inputs.operation == 'translate_srt' }}
@@ -130,7 +128,6 @@ jobs:
 
           print("SRT downloaded successfully.")
           PY
-
 
       - name: Translate SRT with Gemini
         if: ${{ inputs.operation == 'translate_srt' }}
@@ -222,7 +219,6 @@ jobs:
 
               return result
 
-
           def build_srt(blocks):
               output = []
 
@@ -233,7 +229,6 @@ jobs:
                   output.append("")
 
               return "\n".join(output)
-
 
           def extract_answer(text):
               text = text.strip()
@@ -250,7 +245,6 @@ jobs:
                   text = "\n".join(lines)
 
               return text.strip()
-
 
           def translate_batch(client, batch):
 
@@ -296,14 +290,12 @@ jobs:
 
               return batch
 
-
           with open(
               INPUT_FILE,
               "r",
               encoding="utf-8-sig"
           ) as f:
               text = f.read()
-
 
           subtitles = parse_srt(text)
 
@@ -312,16 +304,12 @@ jobs:
                   "No valid SRT subtitles found."
               )
 
-
           client = genai.Client(
               api_key=os.environ["GEMINI_API_KEY"]
           )
 
-
           BATCH_SIZE = 80
-
           translated_all = []
-
 
           for start in range(
               0,
@@ -354,7 +342,6 @@ jobs:
               if end < len(subtitles):
                   time.sleep(2)
 
-
           with open(
               OUTPUT_FILE,
               "w",
@@ -370,7 +357,6 @@ jobs:
 
           python translate_srt.py
 
-
       - name: Send translated SRT to Telegram
         if: ${{ inputs.operation == 'translate_srt' }}
         env:
@@ -384,9 +370,8 @@ jobs:
             -F "document=@arabic.srt" \
             -F "caption=🇸🇦 تمت ترجمة ملف SRT إلى العربية الفصحى بنجاح."
 
-
       # ============================================================
-      # INSTALL TELEGRAM LIBRARY FOR TELEGRAM VIDEO INPUT
+      # INSTALL TELEGRAM LIBRARY
       # ============================================================
 
       - name: Install Telegram library
@@ -394,20 +379,21 @@ jobs:
         run: |
           python -m pip install "telethon<2" cryptg
 
-
       # ============================================================
-      # VIDEO INPUT
+      # VIDEO TOOLS
       # ============================================================
 
       - name: Install video tools
         if: ${{ inputs.operation == 'video' || inputs.operation == 'video_ocr' }}
         run: |
           sudo apt-get update
-
           sudo apt-get install -y \
             ffmpeg \
             aria2
 
+      # ============================================================
+      # TELEGRAM VIDEO INPUT
+      # ============================================================
 
       - name: Download video from Telegram
         if: ${{ (inputs.operation == 'video' || inputs.operation == 'video_ocr') && inputs.source_type == 'telegram' }}
@@ -447,24 +433,66 @@ jobs:
               await client.start()
 
 
-              print(
-                  "📥 Getting Telegram message..."
-              )
+              print("📥 Getting Telegram message...")
+              print(f"Chat ID: {chat_id}")
+              print(f"Message ID: {message_id}")
 
 
+              # أولًا نحاول الوصول للرسالة مباشرة
               message = await client.get_messages(
                   chat_id,
                   ids=message_id
               )
 
 
+              # إذا لم نجدها، نحاول الوصول إلى الحوار ثم البحث
               if not message:
+
+                  print(
+                      "⚠️ Direct message lookup failed."
+                  )
+
+                  try:
+                      entity = await client.get_entity(
+                          chat_id
+                      )
+
+                      print(
+                          f"✅ Chat found: "
+                          f"{getattr(entity, 'title', '') or getattr(entity, 'first_name', '')}"
+                      )
+
+                      messages = await client.get_messages(
+                          entity,
+                          limit=100
+                      )
+
+                      for item in messages:
+
+                          if item.id == message_id:
+                              message = item
+                              break
+
+                  except Exception as e:
+
+                      print(
+                          f"⚠️ Chat lookup failed: {e}"
+                      )
+
+
+              if not message:
+
+                  print(
+                      "❌ Telegram message not found."
+                  )
+
                   raise RuntimeError(
                       "Telegram message not found."
                   )
 
 
               if not message.media:
+
                   raise RuntimeError(
                       "Telegram message has no media."
                   )
@@ -481,6 +509,7 @@ jobs:
 
 
               if not path:
+
                   raise RuntimeError(
                       "Telegram video download failed."
                   )
@@ -499,6 +528,9 @@ jobs:
 
           python download_telegram.py
 
+      # ============================================================
+      # URL VIDEO INPUT
+      # ============================================================
 
       - name: Download video from URL
         if: ${{ (inputs.operation == 'video' || inputs.operation == 'video_ocr') && inputs.source_type == 'url' }}
@@ -522,9 +554,8 @@ jobs:
             -o input.mkv \
             "${{ inputs.video_url }}"
 
-
       # ============================================================
-      # VIDEO OCR → SRT
+      # OCR
       # ============================================================
 
       - name: Install OCR packages
@@ -547,7 +578,6 @@ jobs:
             opencv-python-headless \
             pytesseract
 
-
       - name: Extract screen text with OCR
         if: ${{ inputs.operation == 'video_ocr' }}
         run: |
@@ -556,7 +586,6 @@ jobs:
           import cv2
           import pytesseract
           import re
-
 
           VIDEO_FILE = "input.mkv"
           OUTPUT_FILE = "screen_text.srt"
@@ -567,14 +596,12 @@ jobs:
               "eng+sin+hin+mal+tel+tam+ben"
           )
 
-
           cap = cv2.VideoCapture(VIDEO_FILE)
 
           if not cap.isOpened():
               raise RuntimeError(
                   "Cannot open video."
               )
-
 
           fps = cap.get(
               cv2.CAP_PROP_FPS
@@ -583,13 +610,11 @@ jobs:
           if not fps or fps <= 0:
               fps = 25
 
-
           total_frames = int(
               cap.get(
                   cv2.CAP_PROP_FRAME_COUNT
               )
           )
-
 
           duration = (
               total_frames / fps
@@ -597,17 +622,14 @@ jobs:
               else 0
           )
 
-
           print(f"🎬 FPS: {fps}")
           print(f"⏱️ Duration: {duration:.2f} seconds")
-
 
           results = []
 
           last_text = ""
           start_time = None
           last_time = None
-
 
           def normalize(text):
 
@@ -623,7 +645,6 @@ jobs:
               )
 
               return text.strip()
-
 
           def format_time(seconds):
 
@@ -652,7 +673,6 @@ jobs:
                   f"{milliseconds:03d}"
               )
 
-
           def add_result(
               text,
               start,
@@ -674,10 +694,8 @@ jobs:
                   "end": end
               })
 
-
           frame_index = 0
           next_sample = 0.0
-
 
           while True:
 
@@ -686,11 +704,9 @@ jobs:
               if not ret:
                   break
 
-
               current_time = (
                   frame_index / fps
               )
-
 
               if (
                   current_time + 0.001
@@ -700,23 +716,18 @@ jobs:
                   frame_index += 1
                   continue
 
-
               next_sample += SAMPLE_SECONDS
 
-
               height, width = frame.shape[:2]
-
 
               crop_start = int(
                   height * 0.45
               )
 
-
               cropped = frame[
                   crop_start:height,
                   0:width
               ]
-
 
               cropped = cv2.resize(
                   cropped,
@@ -725,7 +736,6 @@ jobs:
                   fy=1.5,
                   interpolation=cv2.INTER_CUBIC
               )
-
 
               try:
 
@@ -745,13 +755,10 @@ jobs:
                   frame_index += 1
                   continue
 
-
               current_text = normalize(text)
-
 
               if len(current_text) > 300:
                   current_text = ""
-
 
               if current_text == last_text:
 
@@ -767,7 +774,6 @@ jobs:
                           last_time + SAMPLE_SECONDS
                       )
 
-
                   if current_text:
 
                       start_time = current_time
@@ -778,9 +784,7 @@ jobs:
                       start_time = None
                       last_time = None
 
-
                   last_text = current_text
-
 
               if frame_index % int(
                   max(1, fps * 30)
@@ -792,12 +796,9 @@ jobs:
                       f"{duration:.0f}s"
                   )
 
-
               frame_index += 1
 
-
           cap.release()
-
 
           if (
               last_text
@@ -810,23 +811,18 @@ jobs:
                   last_time + SAMPLE_SECONDS
               )
 
-
           cleaned = []
-
 
           for item in results:
 
               text = item["text"].strip()
 
-
               if len(text) < 2:
                   continue
-
 
               if cleaned:
 
                   previous = cleaned[-1]
-
 
                   if (
                       previous["text"] == text
@@ -837,16 +833,13 @@ jobs:
                       previous["end"] = item["end"]
                       continue
 
-
               cleaned.append(item)
-
 
           print(
               f"📝 Detected "
               f"{len(cleaned)} "
               f"screen-text entries."
           )
-
 
           with open(
               OUTPUT_FILE,
@@ -877,14 +870,12 @@ jobs:
 
                   number += 1
 
-
           print(
               "✅ OCR SRT creation completed."
           )
           PY
 
           python video_ocr.py
-
 
       - name: Send OCR SRT to Telegram
         if: ${{ inputs.operation == 'video_ocr' }}
@@ -900,7 +891,6 @@ jobs:
             -F "document=@screen_text.srt" \
             -F "caption=👁️ تم استخراج الكلام الظاهر على الشاشة إلى SRT."
 
-
       # ============================================================
       # VIDEO PROCESSING
       # ============================================================
@@ -909,7 +899,6 @@ jobs:
         if: ${{ inputs.operation == 'video' && inputs.subtitle_url != '' }}
         run: |
           sudo apt-get install -y fonts-noto-core
-
 
       - name: Download subtitle
         if: ${{ inputs.operation == 'video' && inputs.subtitle_url != '' }}
@@ -922,7 +911,6 @@ jobs:
             --file-allocation=none \
             -o subtitle.srt \
             "${{ inputs.subtitle_url }}"
-
 
       - name: Set resolution
         if: ${{ inputs.operation == 'video' && inputs.resolution != 'same' }}
@@ -948,7 +936,6 @@ jobs:
 
           esac
 
-
       - name: Process video with subtitle
         if: ${{ inputs.operation == 'video' && inputs.subtitle_url != '' }}
         run: |
@@ -963,7 +950,6 @@ jobs:
 
           fi
 
-
           ffmpeg -y \
             -i input.mkv \
             -vf "$VIDEO_FILTER" \
@@ -975,7 +961,6 @@ jobs:
             -c:a copy \
             -movflags +faststart \
             output.mp4
-
 
       - name: Convert resolution
         if: ${{ inputs.operation == 'video' && inputs.subtitle_url == '' && inputs.resolution != 'same' }}
@@ -993,13 +978,11 @@ jobs:
             -movflags +faststart \
             output.mp4
 
-
       - name: Keep original video
         if: ${{ inputs.operation == 'video' && inputs.resolution == 'same' && inputs.subtitle_url == '' }}
         run: |
 
           cp input.mkv output.mkv
-
 
       - name: Select output
         if: ${{ inputs.operation == 'video' }}
@@ -1014,7 +997,6 @@ jobs:
             echo "OUTPUT_FILE=output.mp4" >> "$GITHUB_ENV"
 
           fi
-
 
       # ============================================================
       # SEND VIDEO TO TELEGRAM
@@ -1050,14 +1032,11 @@ jobs:
                   os.environ["API_HASH"]
               )
 
-
               await client.start()
-
 
               print(
                   "📤 Starting Telegram upload..."
               )
-
 
               await client.send_file(
                   int(
@@ -1069,11 +1048,9 @@ jobs:
                   supports_streaming=True
               )
 
-
               print(
                   "✅ Telegram upload completed."
               )
-
 
               await client.disconnect()
 
@@ -1082,7 +1059,6 @@ jobs:
           PY
 
           python send.py
-
 
       # ============================================================
       # CLEAN
