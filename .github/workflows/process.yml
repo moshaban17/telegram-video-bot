@@ -70,9 +70,7 @@ on:
         default: "video"
 
 jobs:
-
   process:
-
     runs-on: ubuntu-latest
 
     steps:
@@ -140,7 +138,6 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-
           cat > translate_srt.py <<'PY'
           import os
           import re
@@ -253,13 +250,10 @@ jobs:
               return text.strip()
 
           def translate_batch(client, batch):
-
               source = build_srt(batch)
 
               prompt = PROMPT + """
-
           هذه هي المقاطع التي يجب ترجمتها:
-
           """ + source
 
               response = client.models.generate_content(
@@ -408,7 +402,6 @@ jobs:
           API_HASH: ${{ secrets.API_HASH }}
           TG_SESSION: ${{ secrets.TG_SESSION }}
           CHAT_ID: ${{ inputs.chat_id }}
-          MESSAGE_ID: ${{ inputs.telegram_message_id }}
           BOT_USERNAME: ${{ inputs.bot_username }}
         run: |
 
@@ -426,8 +419,7 @@ jobs:
               api_hash = os.environ["API_HASH"]
               session = os.environ["TG_SESSION"]
 
-              chat_id = int(os.environ["CHAT_ID"])
-              message_id = int(os.environ["MESSAGE_ID"])
+              user_id = int(os.environ["CHAT_ID"])
 
               bot_username = (
                   os.environ["BOT_USERNAME"]
@@ -436,12 +428,10 @@ jobs:
               )
 
               print("========================================")
-              print("🔍 Telegram diagnostic")
+              print("🔍 Telegram video search")
               print("========================================")
-              print(f"Chat ID       : {chat_id}")
-              print(f"Message ID    : {message_id}")
-              print(f"Bot username  : @{bot_username}")
-
+              print(f"👤 User ID: {user_id}")
+              print(f"🤖 Bot: @{bot_username}")
 
               client = TelegramClient(
                   StringSession(session),
@@ -451,11 +441,6 @@ jobs:
 
               await client.start()
 
-
-              # ------------------------------------------------
-              # معرفة الحساب المستخدم
-              # ------------------------------------------------
-
               me = await client.get_me()
 
               print(
@@ -464,366 +449,165 @@ jobs:
                   f"{getattr(me, 'last_name', '') or ''}"
               )
 
-              print(
-                  f"🆔 Session user ID: {me.id}"
-              )
+              print(f"🆔 Session user ID: {me.id}")
 
               print(
                   f"🤖 Is bot session: "
                   f"{getattr(me, 'bot', False)}"
               )
 
+              if me.id != user_id:
 
-              # ------------------------------------------------
-              # تحميل الـ dialogs أولًا
-              # ------------------------------------------------
+                  await client.disconnect()
 
-              print("🔄 Loading Telegram dialogs...")
-
-              dialogs = await client.get_dialogs(
-                  limit=None
-              )
-
-              print(
-                  f"📋 Loaded {len(dialogs)} dialogs."
-              )
-
-
-              # ------------------------------------------------
-              # البحث عن البوت داخل الـ dialogs
-              # ------------------------------------------------
-
-              entity = None
-
-              for dialog in dialogs:
-
-                  dialog_entity = dialog.entity
-
-                  username = getattr(
-                      dialog_entity,
-                      "username",
-                      None
+                  raise RuntimeError(
+                      "Telegram session account does not match the user."
                   )
 
-                  if (
-                      username
-                      and username.lower()
-                      == bot_username.lower()
-                  ):
-
-                      entity = dialog_entity
-
-                      print(
-                          "✅ Bot found inside Telegram dialogs."
-                      )
-
-                      print(
-                          f"   Username: @{username}"
-                      )
-
-                      print(
-                          f"   ID: {entity.id}"
-                      )
-
-                      break
-
-
-              # ------------------------------------------------
-              # إذا لم يوجد في dialogs نستخدم username
-              # ------------------------------------------------
-
-              if entity is None:
-
-                  print(
-                      f"⚠️ Bot not found in dialogs."
-                  )
-
-                  print(
-                      f"🔎 Resolving @{bot_username} directly..."
-                  )
-
-                  try:
-
-                      entity = await client.get_entity(
-                          f"@{bot_username}"
-                      )
-
-                      print(
-                          "✅ Bot chat resolved directly."
-                      )
-
-                      print(
-                          f"   Username: "
-                          f"@{getattr(entity, 'username', bot_username)}"
-                      )
-
-                      print(
-                          f"   ID: {entity.id}"
-                      )
-
-                  except Exception as e:
-
-                      await client.disconnect()
-
-                      print(
-                          f"❌ Could not find bot: {e}"
-                      )
-
-                      raise RuntimeError(
-                          "Telegram bot could not be resolved."
-                      )
-
-
-              # ------------------------------------------------
-              # البحث المباشر عن الرسالة
-              # ------------------------------------------------
-
               print(
-                  "========================================"
+                  f"🔎 Resolving @{bot_username}..."
               )
-
-              print(
-                  f"🔎 Looking for message ID {message_id}..."
-              )
-
-              print(
-                  f"🎯 Target bot ID: {entity.id}"
-              )
-
-              message = None
-
 
               try:
 
-                  found_messages = await client.get_messages(
-                      entity,
-                      ids=[message_id]
+                  entity = await client.get_entity(
+                      f"@{bot_username}"
                   )
-
-                  if found_messages:
-
-                      if isinstance(
-                          found_messages,
-                          list
-                      ):
-
-                          for item in found_messages:
-
-                              if (
-                                  item
-                                  and item.id
-                                  == message_id
-                              ):
-
-                                  message = item
-                                  break
-
-                      else:
-
-                          if (
-                              found_messages.id
-                              == message_id
-                          ):
-
-                              message = found_messages
-
 
               except Exception as e:
 
-                  print(
-                      f"⚠️ Direct lookup error: {e}"
-                  )
-
-
-              if message:
-
-                  print(
-                      "✅ Message found by direct lookup!"
-                  )
-
-                  print(
-                      f"Message ID : {message.id}"
-                  )
-
-                  print(
-                      f"Message date: {message.date}"
-                  )
-
-                  print(
-                      f"Sender ID  : "
-                      f"{getattr(message.sender_id, 'id', message.sender_id)}"
-                  )
-
-                  print(
-                      f"Has media  : {bool(message.media)}"
-                  )
-
-
-              else:
-
-                  # ------------------------------------------------
-                  # محاولة ثانية باستخدام نافذة ID محددة
-                  # ------------------------------------------------
-
-                  print(
-                      "⚠️ Direct lookup did not find the message."
-                  )
-
-                  print(
-                      "🔎 Trying history around the requested ID..."
-                  )
-
-                  try:
-
-                      nearby = await client.get_messages(
-                          entity,
-                          limit=10,
-                          min_id=max(0, message_id - 5),
-                          max_id=message_id + 5
-                      )
-
-                      for item in nearby:
-
-                          print(
-                              f"   Nearby ID: {item.id} | "
-                              f"Media: {bool(item.media)} | "
-                              f"Date: {item.date}"
-                          )
-
-                          if item.id == message_id:
-
-                              message = item
-
-                              print(
-                                  "✅ Message found in ID window!"
-                              )
-
-                              break
-
-                  except Exception as e:
-
-                      print(
-                          f"⚠️ History lookup error: {e}"
-                      )
-
-
-              if message:
-
-                  print(
-                      "========================================"
-                  )
-
-                  print(
-                      "✅ Telegram message found!"
-                  )
-
-                  print(
-                      f"Message ID: {message.id}"
-                  )
-
-                  print(
-                      f"Has media: {bool(message.media)}"
-                  )
-
-                  print(
-                      "========================================"
-                  )
-
-
-              else:
-
-                  # ------------------------------------------------
-                  # تشخيص آخر 20 رسالة
-                  # ------------------------------------------------
-
-                  print(
-                      "========================================"
-                  )
-
-                  print(
-                      "⚠️ Message still NOT found."
-                  )
-
-                  print(
-                      "🔎 Reading latest 20 messages..."
-                  )
-
-                  count = 0
-
-                  async for item in client.iter_messages(
-                      entity,
-                      limit=20
-                  ):
-
-                      count += 1
-
-                      print(
-                          f"   Message ID: {item.id} | "
-                          f"Media: {bool(item.media)} | "
-                          f"Date: {item.date}"
-                      )
-
-                  print(
-                      f"📋 Checked {count} recent messages."
-                  )
-
-                  print(
-                      "========================================"
-                  )
-
-                  print(
-                      "❌ MESSAGE NOT FOUND"
-                  )
-
-                  print(
-                      f"Bot         : @{bot_username}"
-                  )
-
-                  print(
-                      f"Bot ID      : {entity.id}"
-                  )
-
-                  print(
-                      f"Chat ID     : {chat_id}"
-                  )
-
-                  print(
-                      f"Message ID  : {message_id}"
-                  )
-
-                  print(
-                      "========================================"
-                  )
-
                   await client.disconnect()
 
                   raise RuntimeError(
-                      "Telegram message not found."
+                      f"Could not resolve Telegram bot: {e}"
                   )
 
-
-              # ------------------------------------------------
-              # التأكد من وجود ملف
-              # ------------------------------------------------
-
-              if not message.media:
-
-                  await client.disconnect()
-
-                  raise RuntimeError(
-                      "Telegram message has no media."
-                  )
-
+              print("✅ Bot chat found.")
 
               print(
-                  "📥 Downloading video from Telegram..."
+                  f"   Username: "
+                  f"@{getattr(entity, 'username', bot_username)}"
               )
 
+              print(
+                  f"   Bot ID: {entity.id}"
+              )
 
-              path = await message.download_media(
+              # ------------------------------------------------
+              # البحث مباشرة عن آخر فيديو أرسله المستخدم
+              # ------------------------------------------------
+
+              print(
+                  "🔎 Searching for the latest video "
+                  "sent by the user..."
+              )
+
+              found = None
+              checked = 0
+
+              async for item in client.iter_messages(
+                  entity,
+                  limit=200,
+                  from_user=user_id
+              ):
+
+                  checked += 1
+
+                  sender_id = item.sender_id
+                  has_media = bool(item.media)
+
+                  print(
+                      f"   ID: {item.id} | "
+                      f"Sender: {sender_id} | "
+                      f"Media: {has_media} | "
+                      f"Date: {item.date}"
+                  )
+
+                  if sender_id != user_id:
+                      continue
+
+                  if not item.media:
+                      continue
+
+                  if not item.file:
+                      continue
+
+                  mime = (
+                      getattr(
+                          item.file,
+                          "mime_type",
+                          ""
+                      )
+                      or ""
+                  )
+
+                  name = (
+                      getattr(
+                          item.file,
+                          "name",
+                          ""
+                      )
+                      or ""
+                  )
+
+                  print(
+                      f"      📦 File: {name} | "
+                      f"MIME: {mime}"
+                  )
+
+                  is_video = (
+                      mime.startswith("video/")
+                      or name.lower().endswith((
+                          ".mp4",
+                          ".mkv",
+                          ".avi",
+                          ".mov",
+                          ".webm",
+                          ".m4v",
+                          ".ts"
+                      ))
+                  )
+
+                  if not is_video:
+                      continue
+
+                  found = item
+
+                  print("========================================")
+                  print("✅ TARGET VIDEO FOUND")
+                  print(f"   Telegram ID: {item.id}")
+                  print(f"   Sender ID: {sender_id}")
+                  print(f"   Date: {item.date}")
+                  print(f"   File: {name}")
+                  print(f"   MIME: {mime}")
+                  print("========================================")
+
+                  break
+
+              print(
+                  f"📋 Checked {checked} user messages."
+              )
+
+              if not found:
+
+                  await client.disconnect()
+
+                  raise RuntimeError(
+                      "No video sent by the user "
+                      "was found in the bot chat."
+                  )
+
+              # ------------------------------------------------
+              # تحميل الفيديو مباشرة إلى GitHub
+              # ------------------------------------------------
+
+              print(
+                  "📥 Downloading video directly to GitHub..."
+              )
+
+              path = await found.download_media(
                   file="input.mkv"
               )
-
 
               if not path:
 
@@ -833,20 +617,15 @@ jobs:
                       "Telegram video download failed."
                   )
 
-
-              print(
-                  f"✅ Telegram video downloaded: {path}"
-              )
-
-
               size = os.path.getsize(path)
 
               size_mb = size / 1024 / 1024
 
-              print(
-                  f"📦 File size: {size_mb:.2f} MB"
-              )
-
+              print("========================================")
+              print("✅ VIDEO DOWNLOADED SUCCESSFULLY")
+              print(f"📁 Path: {path}")
+              print(f"📦 Size: {size_mb:.2f} MB")
+              print("========================================")
 
               await client.disconnect()
 
