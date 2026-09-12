@@ -11,7 +11,6 @@ from telegram.ext import (
     filters,
 )
 
-
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 GH_TOKEN = os.getenv("GH_TOKEN")
 
@@ -20,20 +19,99 @@ GITHUB_REPO = "telegram-video-bot"
 WORKFLOW_FILE = "process.yml"
 
 
+def main_menu():
+    keyboard = [
+        [
+            InlineKeyboardButton("🔗 تحميل من رابط", callback_data="download"),
+            InlineKeyboardButton("🎬 تحويل دقة", callback_data="convert"),
+        ],
+        [
+            InlineKeyboardButton("📝 حرق ترجمة", callback_data="subtitle"),
+            InlineKeyboardButton("🎙️ صوت → SRT", callback_data="speech"),
+        ],
+        [
+            InlineKeyboardButton("🔊 إدارة الصوت", callback_data="audio"),
+            InlineKeyboardButton("📦 استخراج ترجمة", callback_data="extract"),
+        ],
+        [
+            InlineKeyboardButton("🖼️ Watermark", callback_data="watermark"),
+            InlineKeyboardButton("🔗 ملف → رابط", callback_data="file_link"),
+        ],
+    ]
+
+    return InlineKeyboardMarkup(keyboard)
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🎬 ابعتلي رابط الفيلم المباشر.\n\n"
-        "بعدها هختار لك الدقة."
+        "🎬 أهلاً بك في بوت معالجة الفيديو.\n\n"
+        "اختار الوظيفة المطلوبة:",
+        reply_markup=main_menu(),
     )
 
 
-async def receive_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    url = update.message.text.strip()
+async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
 
-    if not (
-        url.startswith("http://")
-        or url.startswith("https://")
-    ):
+    if query.data == "download":
+        context.user_data["mode"] = "download"
+
+        await query.edit_message_text(
+            "🔗 ابعت الآن رابط الفيديو المباشر.\n\n"
+            "مثال: رابط MP4 أو MKV مباشر."
+        )
+
+    elif query.data == "convert":
+        context.user_data["mode"] = "convert"
+
+        await query.edit_message_text(
+            "🎬 ابعت رابط الفيديو، وبعدها هتختار الدقة."
+        )
+
+    elif query.data == "subtitle":
+        await query.edit_message_text(
+            "📝 وظيفة حرق الترجمة هتتضاف في الخطوة القادمة."
+        )
+
+    elif query.data == "speech":
+        await query.edit_message_text(
+            "🎙️ تحويل الصوت إلى SRT هيتضاف في الخطوة القادمة."
+        )
+
+    elif query.data == "audio":
+        await query.edit_message_text(
+            "🔊 إدارة مسارات الصوت هتتضاف في الخطوة القادمة."
+        )
+
+    elif query.data == "extract":
+        await query.edit_message_text(
+            "📦 استخراج الترجمة المدمجة هيتضاف في الخطوة القادمة."
+        )
+
+    elif query.data == "watermark":
+        await query.edit_message_text(
+            "🖼️ إضافة الـWatermark هتتضاف في الخطوة القادمة."
+        )
+
+    elif query.data == "file_link":
+        await query.edit_message_text(
+            "🔗 تحويل الملف إلى رابط هيتضاف في الخطوة القادمة."
+        )
+
+
+async def receive_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    url = update.message.text.strip()
+    mode = context.user_data.get("mode")
+
+    if mode not in ("download", "convert"):
+        await update.message.reply_text(
+            "اختار وظيفة من القائمة أولًا:",
+            reply_markup=main_menu(),
+        )
+        return
+
+    if not (url.startswith("http://") or url.startswith("https://")):
         await update.message.reply_text(
             "❌ ابعت رابط يبدأ بـ http:// أو https://"
         )
@@ -90,19 +168,19 @@ async def choose_resolution(
         await query.edit_message_text("❌ اختيار غير صالح.")
         return
 
+    if not GH_TOKEN:
+        await query.message.reply_text(
+            "❌ GH_TOKEN غير موجود."
+        )
+        return
+
     chat_id = update.effective_chat.id
 
     await query.edit_message_text(
         f"⏳ جاري تجهيز الفيلم...\n\n"
         f"🎬 الدقة: {resolution}\n"
-        f"📥 التحميل والمعالجة هتتم على GitHub، مش على موبايلك."
+        f"📥 التحميل والمعالجة على GitHub."
     )
-
-    if not GH_TOKEN:
-        await query.message.reply_text(
-            "❌ GH_TOKEN غير موجود في بيئة تشغيل البوت."
-        )
-        return
 
     api_url = (
         f"https://api.github.com/repos/"
@@ -137,13 +215,12 @@ async def choose_resolution(
         if response.status_code == 204:
             await query.message.reply_text(
                 "✅ بدأ تحميل الفيلم ومعالجته.\n\n"
-                "📤 لما يخلص، الفيلم هيتبعت هنا تلقائيًا."
+                "📤 لما يخلص، النتيجة هتتبعت هنا تلقائيًا."
             )
         else:
             await query.message.reply_text(
-                "❌ حصل خطأ أثناء تشغيل المعالجة.\n"
-                f"كود الخطأ: {response.status_code}\n"
-                f"{response.text[:500]}"
+                "❌ فشل تشغيل المعالجة.\n"
+                f"كود الخطأ: {response.status_code}"
             )
 
     except Exception as e:
@@ -164,9 +241,9 @@ def main():
     app.add_handler(CommandHandler("start", start))
 
     app.add_handler(
-        MessageHandler(
-            filters.TEXT & ~filters.COMMAND,
-            receive_link,
+        CallbackQueryHandler(
+            menu_button,
+            pattern=r"^(download|convert|subtitle|speech|audio|extract|watermark|file_link)$"
         )
     )
 
@@ -174,6 +251,13 @@ def main():
         CallbackQueryHandler(
             choose_resolution,
             pattern=r"^res_"
+        )
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            receive_text,
         )
     )
 
