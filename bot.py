@@ -30,6 +30,12 @@ def main_menu():
             InlineKeyboardButton("🎙️ صوت → SRT", callback_data="speech"),
         ],
         [
+            InlineKeyboardButton(
+                "👁️ كلام الشاشة → SRT",
+                callback_data="ocr"
+            ),
+        ],
+        [
             InlineKeyboardButton("🔊 إدارة الصوت", callback_data="audio"),
             InlineKeyboardButton("📦 استخراج ترجمة", callback_data="extract"),
         ],
@@ -61,6 +67,7 @@ async def menu_button(update, context):
     await query.answer()
 
     if query.data == "download":
+
         context.user_data["mode"] = "download"
 
         await query.edit_message_text(
@@ -68,13 +75,33 @@ async def menu_button(update, context):
         )
 
     elif query.data == "convert":
+
         context.user_data["mode"] = "convert"
 
         await query.edit_message_text(
             "🎬 ابعت رابط الفيديو، وبعدها هتختار الدقة."
         )
 
+    elif query.data == "ocr":
+
+        context.user_data["mode"] = "ocr"
+
+        await query.edit_message_text(
+            "👁️ استخراج الكلام الظاهر على الشاشة إلى SRT\n\n"
+            "📹 ابعت الآن رابط الفيديو المباشر.\n\n"
+            "اللغات المدعومة:\n"
+            "🇬🇧 English\n"
+            "🇱🇰 Sinhala\n"
+            "🇮🇳 Hindi\n"
+            "🇮🇳 Malayalam\n"
+            "🇮🇳 Telugu\n"
+            "🇮🇳 Tamil\n"
+            "🇧🇩 Bengali\n\n"
+            "📝 سيتم إنشاء ملف SRT بالتوقيتات."
+        )
+
     elif query.data == "translate_srt":
+
         context.user_data["mode"] = "translate_srt"
 
         await query.edit_message_text(
@@ -83,67 +110,89 @@ async def menu_button(update, context):
         )
 
     elif query.data == "subtitle":
+
         await query.edit_message_text(
             "📝 وظيفة حرق الترجمة هتتضاف في الخطوة القادمة."
         )
 
     elif query.data == "speech":
+
         await query.edit_message_text(
             "🎙️ تحويل الصوت إلى SRT هيتضاف في الخطوة القادمة."
         )
 
     elif query.data == "audio":
+
         await query.edit_message_text(
             "🔊 إدارة مسارات الصوت هتتضاف في الخطوة القادمة."
         )
 
     elif query.data == "extract":
+
         await query.edit_message_text(
             "📦 استخراج الترجمة المدمجة هيتضاف في الخطوة القادمة."
         )
 
     elif query.data == "watermark":
+
         await query.edit_message_text(
             "🖼️ إضافة الـWatermark هتتضاف في الخطوة القادمة."
         )
 
     elif query.data == "file_link":
+
         await query.edit_message_text(
             "🔗 تحويل الملف إلى رابط هيتضاف في الخطوة القادمة."
         )
 
 
 async def receive_text(update, context):
+
     text = (update.message.text or "").strip()
+
     mode = context.user_data.get("mode")
 
     # =========================
     # VIDEO URL
     # =========================
 
-    if mode in ("download", "convert"):
+    if mode in ("download", "convert", "ocr"):
 
         if not (
             text.startswith("http://")
             or text.startswith("https://")
         ):
+
             await update.message.reply_text(
                 "❌ ابعت رابط فيديو مباشر يبدأ بـ http:// أو https://"
             )
+
             return
 
         if not GH_TOKEN:
+
             await update.message.reply_text(
                 "❌ GH_TOKEN غير موجود في Termux."
             )
+
             return
 
         chat_id = update.effective_chat.id
 
         if mode == "download":
+
             resolution = "same"
+            operation = "video"
+
+        elif mode == "convert":
+
+            resolution = "same"
+            operation = "video"
+
         else:
+
             resolution = "same"
+            operation = "video_ocr"
 
         await update.message.reply_text(
             "⏳ تم استلام الرابط.\n\n"
@@ -170,11 +219,12 @@ async def receive_text(update, context):
                 "resolution": resolution,
                 "chat_id": str(chat_id),
                 "srt_file_id": "",
-                "operation": "video",
+                "operation": operation,
             },
         }
 
         try:
+
             response = requests.post(
                 api_url,
                 headers=headers,
@@ -184,11 +234,23 @@ async def receive_text(update, context):
 
             if response.status_code == 204:
 
-                await update.message.reply_text(
-                    "✅ تم تشغيل المعالجة.\n\n"
-                    "📥 GitHub بدأ تحميل الفيديو.\n"
-                    "📤 بعد الانتهاء سيصل الفيديو هنا تلقائيًا."
-                )
+                if mode == "ocr":
+
+                    await update.message.reply_text(
+                        "✅ بدأ استخراج الكلام من الشاشة.\n\n"
+                        "👁️ سيتم فحص الفيديو وقراءة النصوص الظاهرة.\n"
+                        "🌐 اللغات: English / Sinhala / Hindi / Malayalam / "
+                        "Telugu / Tamil / Bengali\n\n"
+                        "📤 عند الانتهاء سيصل ملف SRT هنا تلقائيًا."
+                    )
+
+                else:
+
+                    await update.message.reply_text(
+                        "✅ تم تشغيل المعالجة.\n\n"
+                        "📥 GitHub بدأ تحميل الفيديو.\n"
+                        "📤 بعد الانتهاء سيصل الفيديو هنا تلقائيًا."
+                    )
 
             else:
 
@@ -218,13 +280,16 @@ async def receive_text(update, context):
 
 
 async def receive_document(update, context):
+
     mode = context.user_data.get("mode")
 
     if mode != "translate_srt":
+
         await update.message.reply_text(
             "اختار وظيفة من القائمة أولًا:",
             reply_markup=main_menu(),
         )
+
         return
 
     document = update.message.document
@@ -235,18 +300,23 @@ async def receive_document(update, context):
     file_name = document.file_name or ""
 
     if not file_name.lower().endswith(".srt"):
+
         await update.message.reply_text(
             "❌ لازم تبعت ملف بصيغة SRT."
         )
+
         return
 
     if not GH_TOKEN:
+
         await update.message.reply_text(
             "❌ GH_TOKEN غير موجود."
         )
+
         return
 
     file_id = document.file_id
+
     chat_id = update.effective_chat.id
 
     await update.message.reply_text(
@@ -313,7 +383,9 @@ async def receive_document(update, context):
 def main():
 
     if not BOT_TOKEN:
+
         print("❌ BOT_TOKEN غير موجود.")
+
         return
 
     app = Application.builder().token(BOT_TOKEN).build()
@@ -326,7 +398,6 @@ def main():
         CallbackQueryHandler(menu_button)
     )
 
-    # استقبال الروابط والنصوص
     app.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND,
@@ -334,7 +405,6 @@ def main():
         )
     )
 
-    # استقبال ملفات SRT
     app.add_handler(
         MessageHandler(
             filters.Document.ALL,
