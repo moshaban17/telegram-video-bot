@@ -59,7 +59,7 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await query.edit_message_text(
             "🔗 ابعت الآن رابط الفيديو المباشر.\n\n"
-            "مثال: رابط MP4 أو MKV مباشر."
+            "📌 هيتم تحميله بنفس الدقة الأصلية بدون تحويل."
         )
 
     elif query.data == "convert":
@@ -119,6 +119,21 @@ async def receive_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     context.user_data["video_url"] = url
 
+    # تحميل من رابط = بدون اختيار دقة
+    if mode == "download":
+        await start_processing(
+            update,
+            context,
+            resolution="same",
+            message=(
+                "⏳ جاري تحميل الفيلم...\n\n"
+                "🎬 الجودة: الأصلية\n"
+                "📥 التحميل على GitHub."
+            ),
+        )
+        return
+
+    # تحويل الدقة = هنا فقط يظهر اختيار الدقة
     keyboard = [
         [
             InlineKeyboardButton("نفس الدقة", callback_data="res_same"),
@@ -137,6 +152,77 @@ async def receive_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🎬 اختار الدقة المطلوبة:",
         reply_markup=InlineKeyboardMarkup(keyboard),
     )
+
+
+async def start_processing(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    resolution: str,
+    message: str,
+):
+    video_url = context.user_data.get("video_url")
+
+    if not video_url:
+        await update.message.reply_text(
+            "❌ رابط الفيلم غير موجود. ابعت الرابط من جديد."
+        )
+        return
+
+    if not GH_TOKEN:
+        await update.message.reply_text(
+            "❌ GH_TOKEN غير موجود."
+        )
+        return
+
+    chat_id = update.effective_chat.id
+
+    await update.message.reply_text(message)
+
+    api_url = (
+        f"https://api.github.com/repos/"
+        f"{GITHUB_OWNER}/{GITHUB_REPO}/actions/workflows/"
+        f"{WORKFLOW_FILE}/dispatches"
+    )
+
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {GH_TOKEN}",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+
+    data = {
+        "ref": "main",
+        "inputs": {
+            "video_url": video_url,
+            "subtitle_url": "",
+            "resolution": resolution,
+            "chat_id": str(chat_id),
+        },
+    }
+
+    try:
+        response = requests.post(
+            api_url,
+            headers=headers,
+            json=data,
+            timeout=30,
+        )
+
+        if response.status_code == 204:
+            await update.message.reply_text(
+                "✅ بدأ تحميل الفيلم.\n\n"
+                "📤 لما يخلص، النتيجة هتتبعت هنا تلقائيًا."
+            )
+        else:
+            await update.message.reply_text(
+                "❌ فشل تشغيل المعالجة.\n"
+                f"كود الخطأ: {response.status_code}"
+            )
+
+    except Exception as e:
+        await update.message.reply_text(
+            f"❌ حصل خطأ في الاتصال بـ GitHub:\n{e}"
+        )
 
 
 async def choose_resolution(
