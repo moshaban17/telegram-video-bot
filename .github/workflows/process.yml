@@ -38,6 +38,21 @@ on:
         type: string
         default: ""
 
+      telegram_message_id:
+        description: "Telegram video message ID"
+        required: false
+        type: string
+        default: ""
+
+      source_type:
+        description: "Video source"
+        required: false
+        type: choice
+        options:
+          - "url"
+          - "telegram"
+        default: "url"
+
       operation:
         description: "Operation"
         required: false
@@ -65,7 +80,8 @@ jobs:
         if: ${{ inputs.operation == 'translate_srt' }}
         run: |
           python -m pip install --upgrade pip
-          pip install google-genai
+          pip install google-genai requests
+
 
       - name: Download SRT from Telegram
         if: ${{ inputs.operation == 'translate_srt' }}
@@ -104,7 +120,7 @@ jobs:
 
           r = requests.get(
               download_url,
-              timeout=60
+              timeout=120
           )
 
           r.raise_for_status()
@@ -114,6 +130,7 @@ jobs:
 
           print("SRT downloaded successfully.")
           PY
+
 
       - name: Translate SRT with Gemini
         if: ${{ inputs.operation == 'translate_srt' }}
@@ -192,30 +209,24 @@ jobs:
               result = []
 
               for block in blocks:
-
                   lines = block.split("\n")
 
                   if len(lines) < 3:
                       continue
 
-                  number = lines[0]
-                  timing = lines[1]
-                  subtitle = "\n".join(lines[2:])
-
                   result.append({
-                      "number": number,
-                      "timing": timing,
-                      "text": subtitle
+                      "number": lines[0],
+                      "timing": lines[1],
+                      "text": "\n".join(lines[2:])
                   })
 
               return result
 
-          def build_srt(blocks):
 
+          def build_srt(blocks):
               output = []
 
               for block in blocks:
-
                   output.append(block["number"])
                   output.append(block["timing"])
                   output.append(block["text"])
@@ -223,12 +234,11 @@ jobs:
 
               return "\n".join(output)
 
-          def extract_answer(text):
 
+          def extract_answer(text):
               text = text.strip()
 
               if text.startswith("```"):
-
                   lines = text.splitlines()
 
                   if lines and lines[0].startswith("```"):
@@ -240,6 +250,7 @@ jobs:
                   text = "\n".join(lines)
 
               return text.strip()
+
 
           def translate_batch(client, batch):
 
@@ -264,7 +275,6 @@ jobs:
               translated = parse_srt(answer)
 
               if len(translated) != len(batch):
-
                   raise RuntimeError(
                       f"Gemini returned {len(translated)} blocks "
                       f"but expected {len(batch)}"
@@ -286,29 +296,32 @@ jobs:
 
               return batch
 
+
           with open(
               INPUT_FILE,
               "r",
               encoding="utf-8-sig"
           ) as f:
-
               text = f.read()
+
 
           subtitles = parse_srt(text)
 
           if not subtitles:
-
               raise RuntimeError(
                   "No valid SRT subtitles found."
               )
+
 
           client = genai.Client(
               api_key=os.environ["GEMINI_API_KEY"]
           )
 
+
           BATCH_SIZE = 80
 
           translated_all = []
+
 
           for start in range(
               0,
@@ -341,6 +354,7 @@ jobs:
               if end < len(subtitles):
                   time.sleep(2)
 
+
           with open(
               OUTPUT_FILE,
               "w",
@@ -372,17 +386,152 @@ jobs:
 
 
       # ============================================================
+      # INSTALL TELEGRAM LIBRARY FOR TELEGRAM VIDEO INPUT
+      # ============================================================
+
+      - name: Install Telegram library
+        if: ${{ inputs.operation == 'video' || inputs.operation == 'video_ocr' }}
+        run: |
+          python -m pip install "telethon<2" cryptg
+
+
+      # ============================================================
+      # VIDEO INPUT
+      # ============================================================
+
+      - name: Install video tools
+        if: ${{ inputs.operation == 'video' || inputs.operation == 'video_ocr' }}
+        run: |
+          sudo apt-get update
+
+          sudo apt-get install -y \
+            ffmpeg \
+            aria2
+
+
+      - name: Download video from Telegram
+        if: ${{ (inputs.operation == 'video' || inputs.operation == 'video_ocr') && inputs.source_type == 'telegram' }}
+        env:
+          API_ID: ${{ secrets.API_ID }}
+          API_HASH: ${{ secrets.API_HASH }}
+          TG_SESSION: ${{ secrets.TG_SESSION }}
+          CHAT_ID: ${{ inputs.chat_id }}
+          MESSAGE_ID: ${{ inputs.telegram_message_id }}
+        run: |
+
+          cat > download_telegram.py <<'PY'
+          import os
+          import asyncio
+
+          from telethon import TelegramClient
+          from telethon.sessions import StringSession
+
+
+          async def main():
+
+              api_id = int(os.environ["API_ID"])
+              api_hash = os.environ["API_HASH"]
+              session = os.environ["TG_SESSION"]
+
+              chat_id = int(os.environ["CHAT_ID"])
+              message_id = int(os.environ["MESSAGE_ID"])
+
+
+              client = TelegramClient(
+                  StringSession(session),
+                  api_id,
+                  api_hash
+              )
+
+
+              await client.start()
+
+
+              print(
+                  "📥 Getting Telegram message..."
+              )
+
+
+              message = await client.get_messages(
+                  chat_id,
+                  ids=message_id
+              )
+
+
+              if not message:
+                  raise RuntimeError(
+                      "Telegram message not found."
+                  )
+
+
+              if not message.media:
+                  raise RuntimeError(
+                      "Telegram message has no media."
+                  )
+
+
+              print(
+                  "📥 Downloading video from Telegram..."
+              )
+
+
+              path = await message.download_media(
+                  file="input.mkv"
+              )
+
+
+              if not path:
+                  raise RuntimeError(
+                      "Telegram video download failed."
+                  )
+
+
+              print(
+                  f"✅ Telegram video downloaded: {path}"
+              )
+
+
+              await client.disconnect()
+
+
+          asyncio.run(main())
+          PY
+
+          python download_telegram.py
+
+
+      - name: Download video from URL
+        if: ${{ (inputs.operation == 'video' || inputs.operation == 'video_ocr') && inputs.source_type == 'url' }}
+        run: |
+
+          if [ -z "${{ inputs.video_url }}" ]; then
+            echo "❌ video_url is empty."
+            exit 1
+          fi
+
+          echo "📥 Downloading video from URL..."
+
+          aria2c \
+            --max-connection-per-server=16 \
+            --split=16 \
+            --min-split-size=1M \
+            --file-allocation=none \
+            --continue=true \
+            --summary-interval=5 \
+            --console-log-level=notice \
+            -o input.mkv \
+            "${{ inputs.video_url }}"
+
+
+      # ============================================================
       # VIDEO OCR → SRT
       # ============================================================
 
       - name: Install OCR packages
         if: ${{ inputs.operation == 'video_ocr' }}
         run: |
-          sudo apt-get update
 
           sudo apt-get install -y \
-            ffmpeg \
-            aria2 \
             tesseract-ocr \
             tesseract-ocr-eng \
             tesseract-ocr-sin \
@@ -399,23 +548,6 @@ jobs:
             pytesseract
 
 
-      - name: Download video for OCR
-        if: ${{ inputs.operation == 'video_ocr' }}
-        run: |
-          echo "👁️ Starting video download for OCR..."
-
-          aria2c \
-            --max-connection-per-server=16 \
-            --split=16 \
-            --min-split-size=1M \
-            --file-allocation=none \
-            --continue=true \
-            --summary-interval=5 \
-            --console-log-level=notice \
-            -o input.mkv \
-            "${{ inputs.video_url }}"
-
-
       - name: Extract screen text with OCR
         if: ${{ inputs.operation == 'video_ocr' }}
         run: |
@@ -429,17 +561,7 @@ jobs:
           VIDEO_FILE = "input.mkv"
           OUTPUT_FILE = "screen_text.srt"
 
-          # فحص إطار كل ثانية
           SAMPLE_SECONDS = 1.0
-
-          # اللغات:
-          # eng = English
-          # sin = Sinhala
-          # hin = Hindi
-          # mal = Malayalam
-          # tel = Telugu
-          # tam = Tamil
-          # ben = Bengali
 
           OCR_LANGUAGES = (
               "eng+sin+hin+mal+tel+tam+ben"
@@ -476,13 +598,8 @@ jobs:
           )
 
 
-          print(
-              f"🎬 FPS: {fps}"
-          )
-
-          print(
-              f"⏱️ Duration: {duration:.2f} seconds"
-          )
+          print(f"🎬 FPS: {fps}")
+          print(f"⏱️ Duration: {duration:.2f} seconds")
 
 
           results = []
@@ -559,7 +676,6 @@ jobs:
 
 
           frame_index = 0
-
           next_sample = 0.0
 
 
@@ -582,7 +698,6 @@ jobs:
               ):
 
                   frame_index += 1
-
                   continue
 
 
@@ -591,10 +706,6 @@ jobs:
 
               height, width = frame.shape[:2]
 
-
-              # نركز على الجزء السفلي
-              # لأن أغلب النصوص السينمائية
-              # تظهر هناك.
 
               crop_start = int(
                   height * 0.45
@@ -607,15 +718,11 @@ jobs:
               ]
 
 
-              # تكبير الصورة لتحسين OCR
-
-              scale = 1.5
-
               cropped = cv2.resize(
                   cropped,
                   None,
-                  fx=scale,
-                  fy=scale,
+                  fx=1.5,
+                  fy=1.5,
                   interpolation=cv2.INTER_CUBIC
               )
 
@@ -636,20 +743,13 @@ jobs:
                   )
 
                   frame_index += 1
-
                   continue
 
 
-              current_text = normalize(
-                  text
-              )
+              current_text = normalize(text)
 
-
-              # تجاهل النصوص الطويلة جدًا
-              # التي غالبًا ليست Subtitle.
 
               if len(current_text) > 300:
-
                   current_text = ""
 
 
@@ -711,9 +811,6 @@ jobs:
               )
 
 
-          # إزالة النصوص القصيرة جدًا
-          # ودمج التكرارات المتتالية.
-
           cleaned = []
 
 
@@ -738,7 +835,6 @@ jobs:
                   ):
 
                       previous["end"] = item["end"]
-
                       continue
 
 
@@ -759,7 +855,6 @@ jobs:
           ) as f:
 
               number = 1
-
 
               for item in cleaned:
 
@@ -810,53 +905,16 @@ jobs:
       # VIDEO PROCESSING
       # ============================================================
 
-      - name: Fast direct download
-        if: ${{ inputs.operation == 'video' && inputs.resolution == 'same' && inputs.subtitle_url == '' }}
+      - name: Install FFmpeg fonts
+        if: ${{ inputs.operation == 'video' && inputs.subtitle_url != '' }}
         run: |
-          sudo apt-get update
-          sudo apt-get install -y aria2
-
-          echo "🚀 Starting multi-connection download..."
-
-          aria2c \
-            --max-connection-per-server=16 \
-            --split=16 \
-            --min-split-size=1M \
-            --file-allocation=none \
-            --continue=true \
-            --summary-interval=5 \
-            --console-log-level=notice \
-            -o output.mkv \
-            "${{ inputs.video_url }}"
-
-
-      - name: Install FFmpeg
-        if: ${{ inputs.operation == 'video' && (inputs.resolution != 'same' || inputs.subtitle_url != '') }}
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg fonts-noto-core aria2
-
-
-      - name: Download video for processing
-        if: ${{ inputs.operation == 'video' && (inputs.resolution != 'same' || inputs.subtitle_url != '') }}
-        run: |
-          echo "🚀 Starting multi-connection download..."
-
-          aria2c \
-            --max-connection-per-server=16 \
-            --split=16 \
-            --min-split-size=1M \
-            --file-allocation=none \
-            --continue=true \
-            --summary-interval=5 \
-            --console-log-level=notice \
-            -o input.mkv \
-            "${{ inputs.video_url }}"
+          sudo apt-get install -y fonts-noto-core
 
 
       - name: Download subtitle
         if: ${{ inputs.operation == 'video' && inputs.subtitle_url != '' }}
         run: |
+
           aria2c \
             --max-connection-per-server=8 \
             --split=8 \
@@ -869,30 +927,42 @@ jobs:
       - name: Set resolution
         if: ${{ inputs.operation == 'video' && inputs.resolution != 'same' }}
         run: |
+
           case "${{ inputs.resolution }}" in
+
             "1080p")
               echo "SCALE_FILTER=scale=-2:1080" >> "$GITHUB_ENV"
               ;;
+
             "720p")
               echo "SCALE_FILTER=scale=-2:720" >> "$GITHUB_ENV"
               ;;
+
             "480p")
               echo "SCALE_FILTER=scale=-2:480" >> "$GITHUB_ENV"
               ;;
+
             "360p")
               echo "SCALE_FILTER=scale=-2:360" >> "$GITHUB_ENV"
               ;;
+
           esac
 
 
       - name: Process video with subtitle
         if: ${{ inputs.operation == 'video' && inputs.subtitle_url != '' }}
         run: |
+
           if [ "${SCALE_FILTER:-}" = "" ]; then
+
             VIDEO_FILTER="subtitles=subtitle.srt:force_style='FontName=Noto Sans,FontSize=28,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline=1,Shadow=0,Alignment=2'"
+
           else
+
             VIDEO_FILTER="subtitles=subtitle.srt:force_style='FontName=Noto Sans,FontSize=28,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline=1,Shadow=0,Alignment=2',${SCALE_FILTER}"
+
           fi
+
 
           ffmpeg -y \
             -i input.mkv \
@@ -910,6 +980,7 @@ jobs:
       - name: Convert resolution
         if: ${{ inputs.operation == 'video' && inputs.subtitle_url == '' && inputs.resolution != 'same' }}
         run: |
+
           ffmpeg -y \
             -i input.mkv \
             -vf "${SCALE_FILTER}" \
@@ -923,21 +994,31 @@ jobs:
             output.mp4
 
 
+      - name: Keep original video
+        if: ${{ inputs.operation == 'video' && inputs.resolution == 'same' && inputs.subtitle_url == '' }}
+        run: |
+
+          cp input.mkv output.mkv
+
+
       - name: Select output
         if: ${{ inputs.operation == 'video' }}
         run: |
+
           if [ "${{ inputs.resolution }}" = "same" ] && [ "${{ inputs.subtitle_url }}" = "" ]; then
+
             echo "OUTPUT_FILE=output.mkv" >> "$GITHUB_ENV"
+
           else
+
             echo "OUTPUT_FILE=output.mp4" >> "$GITHUB_ENV"
+
           fi
 
 
-      - name: Install Telegram library
-        if: ${{ inputs.operation == 'video' }}
-        run: |
-          python -m pip install "telethon<2" cryptg
-
+      # ============================================================
+      # SEND VIDEO TO TELEGRAM
+      # ============================================================
 
       - name: Send video result to Telegram
         if: ${{ inputs.operation == 'video' }}
@@ -1003,9 +1084,14 @@ jobs:
           python send.py
 
 
+      # ============================================================
+      # CLEAN
+      # ============================================================
+
       - name: Clean files
         if: always()
         run: |
+
           rm -f input.mkv
           rm -f output.mkv
           rm -f output.mp4
@@ -1014,5 +1100,6 @@ jobs:
           rm -f arabic.srt
           rm -f screen_text.srt
           rm -f send.py
+          rm -f download_telegram.py
           rm -f translate_srt.py
           rm -f video_ocr.py
