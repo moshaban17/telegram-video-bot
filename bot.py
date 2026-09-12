@@ -24,6 +24,8 @@ GITHUB_OWNER = "moshaban17"
 GITHUB_REPO = "telegram-video-bot"
 WORKFLOW_FILE = "process.yml"
 
+BOT_USERNAME = "CinmalekHardsubBot"
+
 
 def main_menu():
 
@@ -235,6 +237,7 @@ def github_dispatch(
             "telegram_message_id": str(
                 telegram_message_id
             ),
+            "bot_username": BOT_USERNAME,
             "source_type": source_type,
             "operation": operation,
         },
