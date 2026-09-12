@@ -59,7 +59,6 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if query.data == "download":
         context.user_data["mode"] = "download"
-
         await query.edit_message_text(
             "🔗 ابعت الآن رابط الفيديو المباشر.\n\n"
             "📌 هيتم تحميله بنفس الدقة الأصلية بدون تحويل."
@@ -67,14 +66,12 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif query.data == "convert":
         context.user_data["mode"] = "convert"
-
         await query.edit_message_text(
             "🎬 ابعت رابط الفيديو، وبعدها هتختار الدقة."
         )
 
     elif query.data == "translate_srt":
         context.user_data["mode"] = "translate_srt"
-
         await query.edit_message_text(
             "🌐 ترجمة SRT إلى العربية الفصحى\n\n"
             "📄 ابعت الآن ملف SRT.\n\n"
@@ -117,10 +114,7 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
-async def receive_document(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
+async def receive_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mode = context.user_data.get("mode")
 
     if mode != "translate_srt":
@@ -198,4 +192,33 @@ async def receive_document(
         else:
             await update.message.reply_text(
                 "❌ فشل تشغيل الترجمة.\n"
-                f"كود الخط
+                f"كود الخطأ: {response.status_code}\n"
+                f"{response.text[:500]}"
+            )
+
+    except Exception as e:
+        await update.message.reply_text(
+            "❌ حصل خطأ أثناء تشغيل الترجمة:\n"
+            f"{str(e)}"
+        )
+
+
+def main():
+    if not BOT_TOKEN:
+        print("❌ BOT_TOKEN غير موجود.")
+        return
+
+    app = Application.builder().token(BOT_TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(menu_button))
+    app.add_handler(
+        MessageHandler(filters.Document.ALL, receive_document)
+    )
+
+    print("🤖 البوت يعمل...")
+    app.run_polling()
+
+
+if __name__ == "__main__":
+    main()
