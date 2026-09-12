@@ -512,15 +512,14 @@ jobs:
 
 
               # ------------------------------------------------
-              # محاولة الوصول للرسالة بالـID
+              # البحث عن الرسالة
               # ------------------------------------------------
 
               print(
-                  "🔎 Searching for Telegram message..."
+                  f"🔎 Looking for message ID {message_id}..."
               )
 
               message = None
-
 
               try:
 
@@ -529,43 +528,64 @@ jobs:
                       ids=message_id
                   )
 
-                  if message:
-
-                      print(
-                          "✅ Message found by direct lookup."
-                      )
-
               except Exception as e:
 
                   print(
-                      f"⚠️ Direct message lookup failed: {e}"
+                      f"⚠️ Direct lookup error: {e}"
                   )
 
 
-              # ------------------------------------------------
-              # إذا لم نجدها، نبحث في آخر 200 رسالة
-              # ------------------------------------------------
-
-              if not message:
+              if message:
 
                   print(
-                      "🔎 Searching last 200 messages..."
+                      "✅ Message found by direct lookup."
                   )
+
+                  print(
+                      f"Message ID : {message.id}"
+                  )
+
+                  print(
+                      f"Message date: {message.date}"
+                  )
+
+                  print(
+                      f"Sender ID  : "
+                      f"{getattr(message.sender_id, 'id', message.sender_id)}"
+                  )
+
+                  print(
+                      f"Has media  : {bool(message.media)}"
+                  )
+
+              else:
+
+                  print(
+                      "⚠️ Message was NOT found by direct ID."
+                  )
+
+                  print(
+                      "🔎 Reading recent messages for diagnosis..."
+                  )
+
+                  count = 0
 
                   async for item in client.iter_messages(
                       entity,
-                      limit=200
+                      limit=20
                   ):
 
-                      if item.id == message_id:
+                      count += 1
 
-                          message = item
+                      print(
+                          f"   Message ID: {item.id} | "
+                          f"Media: {bool(item.media)} | "
+                          f"Date: {item.date}"
+                      )
 
-                          print(
-                              "✅ Message found in recent messages."
-                          )
-
-                          break
+                  print(
+                      f"📋 Checked {count} recent messages."
+                  )
 
 
               # ------------------------------------------------
@@ -584,6 +604,10 @@ jobs:
 
                   print(
                       f"Bot         : @{bot_username}"
+                  )
+
+                  print(
+                      f"Bot ID      : {entity.id}"
                   )
 
                   print(
