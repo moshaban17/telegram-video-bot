@@ -78,9 +78,5 @@ jobs:
           asyncio.run(main())
           PY
 
-          python send.py
-
-            - name: Delete files
-        if: always()
-        run: |
+                    python send.py
           rm -f input.mkv subtitle.srt output.mp4 send.py
