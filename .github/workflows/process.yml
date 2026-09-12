@@ -80,4 +80,7 @@ jobs:
 
           python send.py
 
-      rm -f input.mkv subtitle.srt output.mp4 send.py
+            - name: Delete files
+        if: always()
+        run: |
+          rm -f input.mkv subtitle.srt output.mp4 send.py
