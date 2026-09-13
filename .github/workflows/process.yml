@@ -99,10 +99,8 @@ jobs:
           token = os.environ["BOT_TOKEN"]
           file_id = os.environ["SRT_FILE_ID"]
 
-          api = f"https://api.telegram.org/bot{token}/getFile"
-
           r = requests.get(
-              api,
+              f"https://api.telegram.org/bot{token}/getFile",
               params={"file_id": file_id},
               timeout=30
           )
@@ -153,54 +151,35 @@ jobs:
           PROMPT = r"""
           أنت مترجم محترف لترجمة الأفلام والمسلسلات إلى العربية الفصحى.
 
-          مهمتك ترجمة نصوص الحوار إلى العربية الفصحى الطبيعية والسينمائية.
+          ترجم الحوار إلى عربية فصحى طبيعية وسينمائية.
 
-          قواعد الترجمة الإلزامية:
+          القواعد:
 
-          1. افهم المعنى والسياق قبل الترجمة.
-          2. لا تترجم الكلمات أو العبارات حرفيًا عندما يكون لها معنى اصطلاحي.
-          3. ميّز بين المتحدث والمخاطَب قدر الإمكان من السياق.
-          4. راعِ جنس المتحدث والمخاطَب: مذكر/مؤنث.
-          5. حافظ على اتساق أسماء الشخصيات والمصطلحات في جميع المقاطع.
-          6. إذا تكررت الجملة أو العبارة بنفس المعنى، استخدم نفس الترجمة قدر الإمكان.
-          7. الشتائم والإهانات تُترجم بوضوح وبنفس مستوى القوة الموجود في الأصل.
-             لا تُلطّف الإهانة ولا تحذفها، ولا تجعلها أقوى من الأصل.
-          8. لا تستخدم ترجمة حرفية غريبة للتعبيرات العامية.
-          9. مثال:
-             Hey man = يا رجل
-             Hey Ahmed = يا أحمد
-             Wow = يا للروعة
-             Oh my God = يا إلهي
-          10. حسب السياق:
-              Grandpa / Grandfather عند النداء = أيها الجد
-              Teacher / Master عند النداء = أيها المعلم
-          11. لا تستبدل كلمة God تلقائيًا بـ"الله" إذا كان المقصود في السياق هو "إله".
-          12. استخدم العربية الفصحى، وليس العامية المصرية أو الشامية أو الخليجية.
-          13. اجعل الجمل طبيعية وقابلة للعرض كترجمة فيلم.
-          14. لا تضف شرحًا أو ملاحظات أو تعليقات.
-          15. لا تضف علامات اقتباس من عندك.
-          16. لا تغيّر أرقام المقاطع أو التوقيتات.
-          17. لا تغيّر ترتيب المقاطع.
-          18. لا تغيّر أي HTML أو تنسيق موجود داخل النص مثل:
-              <i>
-              </i>
-              <font ...>
-              </font>
-          19. حافظ على رموز الموسيقى ♪ و ♫ كما هي.
-          20. لا تحذف أي مقطع.
-          21. لا تضف أي مقطع جديد.
-          22. ترجم النص فقط.
+          1. افهم السياق قبل الترجمة.
+          2. لا تترجم التعبيرات الاصطلاحية حرفيًا.
+          3. راعِ جنس المتحدث والمخاطَب.
+          4. حافظ على أسماء الشخصيات والمصطلحات.
+          5. حافظ على مستوى الشتائم والإهانات في الأصل.
+          6. لا تحذف أو تضيف حوارًا.
+          7. لا تغير أرقام المقاطع.
+          8. لا تغير التوقيتات.
+          9. لا تغير ترتيب المقاطع.
+          10. حافظ على جميع HTML tags كما هي.
+          11. حافظ على رموز ♪ و ♫ كما هي.
+          12. استخدم العربية الفصحى وليس العامية.
+          13. استخدم "إله" حسب السياق بدل استبداله تلقائيًا بـ"الله".
+          14. Hey man = يا رجل.
+          15. Hey + name = يا [الاسم].
+          16. Wow = يا للروعة.
+          17. لا تضف شرحًا أو ملاحظات.
+          18. أعد SRT فقط.
 
-          سيتم إعطاؤك مجموعة من مقاطع SRT.
-
-          أعد نفس المقاطع بنفس الأرقام والتوقيتات والترتيب.
-          غيّر فقط نص الحوار إلى العربية.
-
-          لا تكتب أي شيء خارج مقاطع SRT.
+          غيّر نص الحوار فقط.
           """
 
           def parse_srt(text):
-              text = text.replace("\r\n", "\n").replace("\r", "\n")
+              text = text.replace("\r\n", "\n")
+              text = text.replace("\r", "\n")
 
               blocks = re.split(
                   r"\n\s*\n",
@@ -240,7 +219,7 @@ jobs:
               if text.startswith("```"):
                   lines = text.splitlines()
 
-                  if lines and lines[0].startswith("```"):
+                  if lines:
                       lines = lines[1:]
 
                   if lines and lines[-1].strip() == "```":
@@ -254,7 +233,9 @@ jobs:
               source = build_srt(batch)
 
               prompt = PROMPT + """
-          هذه هي المقاطع التي يجب ترجمتها:
+
+          هذه المقاطع:
+
           """ + source
 
               response = client.models.generate_content(
@@ -265,17 +246,20 @@ jobs:
                   }
               )
 
-              answer = extract_answer(response.text)
-
-              translated = parse_srt(answer)
+              translated = parse_srt(
+                  extract_answer(response.text)
+              )
 
               if len(translated) != len(batch):
                   raise RuntimeError(
-                      f"Gemini returned {len(translated)} blocks "
-                      f"but expected {len(batch)}"
+                      f"Expected {len(batch)} subtitles "
+                      f"but received {len(translated)}"
                   )
 
-              for original, new in zip(batch, translated):
+              for original, new in zip(
+                  batch,
+                  translated
+              ):
 
                   if original["number"] != new["number"]:
                       raise RuntimeError(
@@ -300,11 +284,6 @@ jobs:
 
           subtitles = parse_srt(text)
 
-          if not subtitles:
-              raise RuntimeError(
-                  "No valid SRT subtitles found."
-              )
-
           client = genai.Client(
               api_key=os.environ["GEMINI_API_KEY"]
           )
@@ -323,21 +302,17 @@ jobs:
                   len(subtitles)
               )
 
-              batch = subtitles[start:end]
-
               print(
                   f"Translating subtitles "
-                  f"{start + 1} - {end} "
+                  f"{start + 1}-{end} "
                   f"of {len(subtitles)}"
               )
 
-              translated = translate_batch(
-                  client,
-                  batch
-              )
-
               translated_all.extend(
-                  translated
+                  translate_batch(
+                      client,
+                      subtitles[start:end]
+                  )
               )
 
               if end < len(subtitles):
@@ -348,7 +323,6 @@ jobs:
               "w",
               encoding="utf-8"
           ) as f:
-
               f.write(
                   build_srt(translated_all)
               )
@@ -372,7 +346,7 @@ jobs:
             -F "caption=🇸🇦 تمت ترجمة ملف SRT إلى العربية الفصحى بنجاح."
 
       # ============================================================
-      # INSTALL TELEGRAM + AUDIO LIBRARIES
+      # TELEGRAM / VIDEO TOOLS
       # ============================================================
 
       - name: Install Telegram library
@@ -388,17 +362,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install faster-whisper
 
-      # ============================================================
-      # VIDEO TOOLS
-      # ============================================================
-
       - name: Install video tools
         if: ${{ inputs.operation == 'video' || inputs.operation == 'video_ocr' }}
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            ffmpeg \
-            aria2
+          sudo apt-get install -y ffmpeg aria2
 
       # ============================================================
       # TELEGRAM MEDIA INPUT
@@ -412,6 +380,7 @@ jobs:
           TG_SESSION: ${{ secrets.TG_SESSION }}
           CHAT_ID: ${{ inputs.chat_id }}
           BOT_USERNAME: ${{ inputs.bot_username }}
+          OPERATION: ${{ inputs.operation }}
         run: |
 
           cat > download_telegram.py <<'PY'
@@ -447,16 +416,26 @@ jobs:
 
           async def main():
 
-              api_id = int(os.environ["API_ID"])
-              api_hash = os.environ["API_HASH"]
-              session = os.environ["TG_SESSION"]
-
-              user_id = int(os.environ["CHAT_ID"])
-
-              operation = os.environ.get(
-                  "OPERATION",
-                  "video"
+              client = TelegramClient(
+                  StringSession(
+                      os.environ["TG_SESSION"]
+                  ),
+                  int(os.environ["API_ID"]),
+                  os.environ["API_HASH"]
               )
+
+              await client.start()
+
+              user_id = int(
+                  os.environ["CHAT_ID"]
+              )
+
+              me = await client.get_me()
+
+              if me.id != user_id:
+                  raise RuntimeError(
+                      "Telegram session account does not match CHAT_ID."
+                  )
 
               bot_username = (
                   os.environ["BOT_USERNAME"]
@@ -464,101 +443,25 @@ jobs:
                   .lstrip("@")
               )
 
-              print("========================================")
-              print("🔍 Telegram media search")
-              print("========================================")
-              print(f"👤 User ID: {user_id}")
-              print(f"🤖 Bot: @{bot_username}")
-              print(f"⚙️ Operation: {operation}")
+              operation = os.environ[
+                  "OPERATION"
+              ]
 
-              client = TelegramClient(
-                  StringSession(session),
-                  api_id,
-                  api_hash
-              )
-
-              await client.start()
-
-              me = await client.get_me()
-
-              print(
-                  f"👤 Session account: "
-                  f"{getattr(me, 'first_name', '')} "
-                  f"{getattr(me, 'last_name', '') or ''}"
-              )
-
-              print(f"🆔 Session user ID: {me.id}")
-
-              print(
-                  f"🤖 Is bot session: "
-                  f"{getattr(me, 'bot', False)}"
-              )
-
-              if me.id != user_id:
-
-                  await client.disconnect()
-
-                  raise RuntimeError(
-                      "Telegram session account does not match the user."
-                  )
-
-              print(
-                  f"🔎 Resolving @{bot_username}..."
-              )
-
-              try:
-
-                  entity = await client.get_entity(
-                      f"@{bot_username}"
-                  )
-
-              except Exception as e:
-
-                  await client.disconnect()
-
-                  raise RuntimeError(
-                      f"Could not resolve Telegram bot: {e}"
-                  )
-
-              print("✅ Bot chat found.")
-
-              print(
-                  f"   Username: "
-                  f"@{getattr(entity, 'username', bot_username)}"
+              entity = await client.get_entity(
+                  f"@{bot_username}"
               )
 
               print(
-                  f"   Bot ID: {entity.id}"
-              )
-
-              print(
-                  "🔎 Searching for the latest "
-                  "media sent by the user..."
+                  "🔎 Searching last 200 messages..."
               )
 
               found = None
-              checked = 0
 
               async for item in client.iter_messages(
                   entity,
                   limit=200,
                   from_user=user_id
               ):
-
-                  checked += 1
-
-                  sender_id = item.sender_id
-                  has_media = bool(item.media)
-
-                  print(
-                      f"   ID: {item.id} | "
-                      f"Sender: {sender_id} | "
-                      f"Media: {has_media} | "
-                      f"Date: {item.date}"
-                  )
-
-                  if sender_id != user_id:
-                      continue
 
                   if not item.media:
                       continue
@@ -582,72 +485,45 @@ jobs:
                           ""
                       )
                       or ""
-                  )
-
-                  name_lower = name.lower()
-
-                  print(
-                      f"      📦 File: {name} | "
-                      f"MIME: {mime}"
-                  )
+                  ).lower()
 
                   is_video = (
                       mime.startswith("video/")
-                      or name_lower.endswith(
+                      or name.endswith(
                           VIDEO_EXTENSIONS
                       )
                   )
 
                   is_audio = (
                       mime.startswith("audio/")
-                      or name_lower.endswith(
+                      or name.endswith(
                           AUDIO_EXTENSIONS
                       )
                   )
 
                   if operation == "audio_srt":
 
-                      valid_media = (
+                      if not (
                           is_video or is_audio
-                      )
+                      ):
+                          continue
 
                   else:
 
-                      valid_media = is_video
-
-                  if not valid_media:
-                      continue
+                      if not is_video:
+                          continue
 
                   found = item
-
-                  print("========================================")
-                  print("✅ TARGET MEDIA FOUND")
-                  print(f"   Telegram ID: {item.id}")
-                  print(f"   Sender ID: {sender_id}")
-                  print(f"   Date: {item.date}")
-                  print(f"   File: {name}")
-                  print(f"   MIME: {mime}")
-                  print(f"   Video: {is_video}")
-                  print(f"   Audio: {is_audio}")
-                  print("========================================")
-
                   break
 
-              print(
-                  f"📋 Checked {checked} user messages."
-              )
-
               if not found:
-
-                  await client.disconnect()
-
                   raise RuntimeError(
-                      "No suitable media sent by the user "
-                      "was found in the bot chat."
+                      "No suitable media found."
                   )
 
               print(
-                  "📥 Downloading media directly to GitHub..."
+                  f"✅ Found Telegram message "
+                  f"{found.id}"
               )
 
               path = await found.download_media(
@@ -655,22 +531,18 @@ jobs:
               )
 
               if not path:
-
-                  await client.disconnect()
-
                   raise RuntimeError(
-                      "Telegram media download failed."
+                      "Telegram download failed."
                   )
 
-              size = os.path.getsize(path)
+              print(
+                  f"✅ Downloaded: {path}"
+              )
 
-              size_mb = size / 1024 / 1024
-
-              print("========================================")
-              print("✅ MEDIA DOWNLOADED SUCCESSFULLY")
-              print(f"📁 Path: {path}")
-              print(f"📦 Size: {size_mb:.2f} MB")
-              print("========================================")
+              print(
+                  f"📦 Size: "
+                  f"{os.path.getsize(path) / 1024 / 1024:.2f} MB"
+              )
 
               await client.disconnect()
 
@@ -678,11 +550,10 @@ jobs:
           asyncio.run(main())
           PY
 
-          OPERATION="${{ inputs.operation }}" \
           python download_telegram.py
 
       # ============================================================
-      # URL VIDEO INPUT
+      # URL DOWNLOAD
       # ============================================================
 
       - name: Download video from URL
@@ -693,8 +564,6 @@ jobs:
             echo "❌ video_url is empty."
             exit 1
           fi
-
-          echo "📥 Downloading video from URL..."
 
           aria2c \
             --max-connection-per-server=16 \
@@ -707,10 +576,6 @@ jobs:
             -o input.mkv \
             "${{ inputs.video_url }}"
 
-      # ============================================================
-      # URL AUDIO / VIDEO INPUT FOR SPEECH TO SRT
-      # ============================================================
-
       - name: Download media from URL for speech to SRT
         if: ${{ inputs.operation == 'audio_srt' && inputs.source_type == 'url' }}
         run: |
@@ -719,8 +584,6 @@ jobs:
             echo "❌ video_url is empty."
             exit 1
           fi
-
-          echo "📥 Downloading audio/video from URL..."
 
           aria2c \
             --max-connection-per-server=16 \
@@ -741,8 +604,6 @@ jobs:
         if: ${{ inputs.operation == 'audio_srt' }}
         run: |
 
-          echo "🎙️ Extracting audio..."
-
           ffmpeg -y \
             -i input.mkv \
             -vn \
@@ -750,8 +611,6 @@ jobs:
             -ar 16000 \
             -c:a pcm_s16le \
             speech.wav
-
-          echo "✅ Audio extraction completed."
 
       - name: Convert speech to SRT
         if: ${{ inputs.operation == 'audio_srt' }}
@@ -766,7 +625,6 @@ jobs:
           INPUT_FILE = "speech.wav"
           OUTPUT_FILE = "speech.srt"
 
-          # Keep Medium because Small missed dialogue
           MODEL_NAME = "medium"
 
 
@@ -829,43 +687,31 @@ jobs:
 
           print("✅ Whisper model loaded.")
           print("🎧 Transcribing speech...")
-          print("🔇 VAD enabled with balanced speech detection.")
+          print("🔇 VAD enabled.")
 
 
           segments, info = model.transcribe(
+
               INPUT_FILE,
 
-              # Medium quality with reasonable speed
               beam_size=3,
 
               temperature=0,
 
-              # Keep VAD enabled to reduce
-              # music/drum hallucinations
               vad_filter=True,
 
               vad_parameters={
-
-                  # Detect speech sooner after short pauses
                   "min_silence_duration_ms": 500,
-
-                  # Protect the beginning/end of dialogue
                   "speech_pad_ms": 400,
-
-                  # Keep short dialogue segments
                   "min_speech_duration_ms": 150
               },
 
-              # Keep context between nearby segments
               condition_on_previous_text=True,
 
-              # Do not reject quiet dialogue too easily
               no_speech_threshold=0.92,
 
-              # Allow difficult speech over drums/music
               log_prob_threshold=-2.5,
 
-              # Reduce false rejection
               compression_ratio_threshold=3.5
           )
 
@@ -883,10 +729,15 @@ jobs:
 
           results = []
 
+          last_text = ""
+          last_end = 0.0
+
 
           for segment in segments:
 
-              text = clean_text(segment.text)
+              text = clean_text(
+                  segment.text
+              )
 
               if not text:
                   continue
@@ -897,58 +748,182 @@ jobs:
                   0.0
               )
 
-              # Reject only very likely non-speech
               if no_speech_prob > 0.97:
                   continue
 
+              start = segment.start
+              end = segment.end
+
+              duration = end - start
+
+              # ------------------------------------------------
+              # HARD PROTECTION AGAINST WHISPER HALLUCINATIONS
+              # ------------------------------------------------
+
+              if duration > 30:
+
+                  print(
+                      "⚠️ Skipping suspicious "
+                      f"long segment: "
+                      f"{format_time(start)} --> "
+                      f"{format_time(end)}"
+                  )
+
+                  continue
+
+
+              normalized = re.sub(
+                  r"\s+",
+                  " ",
+                  text
+              ).strip().lower()
+
+
+              previous_normalized = re.sub(
+                  r"\s+",
+                  " ",
+                  last_text
+              ).strip().lower()
+
+
+              # Exact repeated text
+              if (
+                  normalized
+                  and normalized == previous_normalized
+              ):
+
+                  print(
+                      f"⚠️ Repeated text removed: "
+                      f"{text}"
+                  )
+
+                  # Do NOT extend the subtitle indefinitely.
+                  continue
+
+
+              # ------------------------------------------------
+              # Detect repeated same text among recent entries
+              # ------------------------------------------------
+
+              recent_repeat = False
+
+              for previous in results[-6:]:
+
+                  previous_text = re.sub(
+                      r"\s+",
+                      " ",
+                      previous["text"]
+                  ).strip().lower()
+
+                  if normalized == previous_text:
+
+                      gap = (
+                          start
+                          - previous["end"]
+                      )
+
+                      if gap < 8:
+
+                          recent_repeat = True
+
+                          print(
+                              "⚠️ Recent repeated "
+                              f"text removed: {text}"
+                          )
+
+                          break
+
+              if recent_repeat:
+                  continue
+
+
+              # ------------------------------------------------
+              # Protect against extremely long subtitle entries
+              # ------------------------------------------------
+
+              if duration > 20:
+
+                  print(
+                      "⚠️ Long subtitle removed: "
+                      f"{duration:.1f}s | {text}"
+                  )
+
+                  continue
+
+
               results.append({
-                  "start": segment.start,
-                  "end": segment.end,
+                  "start": start,
+                  "end": end,
                   "text": text
               })
 
+
+              last_text = text
+              last_end = end
+
+
               print(
-                  f"[{format_time(segment.start)} --> "
-                  f"{format_time(segment.end)}] "
+                  f"[{format_time(start)} --> "
+                  f"{format_time(end)}] "
                   f"{text}"
               )
 
 
-          # Remove immediate duplicate segments
-          # that Whisper can sometimes produce
+          # ----------------------------------------------------
+          # Final cleanup
+          # ----------------------------------------------------
+
           cleaned_results = []
 
           for item in results:
 
-              if cleaned_results:
+              text = item["text"].strip()
 
-                  previous = cleaned_results[-1]
+              if not text:
+                  continue
 
-                  previous_text = previous["text"].strip()
-                  current_text = item["text"].strip()
+              normalized = re.sub(
+                  r"\s+",
+                  " ",
+                  text
+              ).strip().lower()
 
-                  same_text = (
-                      previous_text.lower()
-                      == current_text.lower()
-                  )
 
-                  overlapping = (
-                      item["start"]
-                      <= previous["end"] + 0.35
-                  )
+              duplicate = False
 
-                  if same_text and overlapping:
+              for previous in cleaned_results[-5:]:
 
-                      if item["end"] > previous["end"]:
-                          previous["end"] = item["end"]
+                  previous_normalized = re.sub(
+                      r"\s+",
+                      " ",
+                      previous["text"]
+                  ).strip().lower()
 
-                      continue
+                  if normalized == previous_normalized:
+
+                      if (
+                          item["start"]
+                          - previous["end"]
+                          < 8
+                      ):
+
+                          duplicate = True
+                          break
+
+
+              if duplicate:
+                  continue
+
 
               cleaned_results.append(item)
 
 
           results = cleaned_results
 
+
+          # ----------------------------------------------------
+          # Write SRT
+          # ----------------------------------------------------
 
           with open(
               OUTPUT_FILE,
@@ -1048,7 +1023,9 @@ jobs:
               "eng+sin+hin+mal+tel+tam+ben"
           )
 
-          cap = cv2.VideoCapture(VIDEO_FILE)
+          cap = cv2.VideoCapture(
+              VIDEO_FILE
+          )
 
           if not cap.isOpened():
               raise RuntimeError(
@@ -1074,14 +1051,12 @@ jobs:
               else 0
           )
 
-          print(f"🎬 FPS: {fps}")
-          print(f"⏱️ Duration: {duration:.2f} seconds")
-
           results = []
 
           last_text = ""
           start_time = None
           last_time = None
+
 
           def normalize(text):
 
@@ -1097,6 +1072,7 @@ jobs:
               )
 
               return text.strip()
+
 
           def format_time(seconds):
 
@@ -1125,6 +1101,7 @@ jobs:
                   f"{milliseconds:03d}"
               )
 
+
           def add_result(
               text,
               start,
@@ -1146,6 +1123,7 @@ jobs:
                   "end": end
               })
 
+
           frame_index = 0
           next_sample = 0.0
 
@@ -1160,10 +1138,7 @@ jobs:
                   frame_index / fps
               )
 
-              if (
-                  current_time + 0.001
-                  < next_sample
-              ):
+              if current_time + 0.001 < next_sample:
 
                   frame_index += 1
                   continue
@@ -1197,17 +1172,13 @@ jobs:
                       config="--psm 6"
                   )
 
-              except Exception as e:
-
-                  print(
-                      f"OCR error at "
-                      f"{current_time:.2f}s: {e}"
-                  )
-
+              except Exception:
                   frame_index += 1
                   continue
 
-              current_text = normalize(text)
+              current_text = normalize(
+                  text
+              )
 
               if len(current_text) > 300:
                   current_text = ""
@@ -1238,16 +1209,6 @@ jobs:
 
                   last_text = current_text
 
-              if frame_index % int(
-                  max(1, fps * 30)
-              ) == 0:
-
-                  print(
-                      f"🔎 OCR progress: "
-                      f"{current_time:.0f}s / "
-                      f"{duration:.0f}s"
-                  )
-
               frame_index += 1
 
           cap.release()
@@ -1262,6 +1223,7 @@ jobs:
                   start_time,
                   last_time + SAMPLE_SECONDS
               )
+
 
           cleaned = []
 
@@ -1287,11 +1249,6 @@ jobs:
 
               cleaned.append(item)
 
-          print(
-              f"📝 Detected "
-              f"{len(cleaned)} "
-              f"screen-text entries."
-          )
 
           with open(
               OUTPUT_FILE,
@@ -1299,9 +1256,10 @@ jobs:
               encoding="utf-8"
           ) as f:
 
-              number = 1
-
-              for item in cleaned:
+              for number, item in enumerate(
+                  cleaned,
+                  start=1
+              ):
 
                   f.write(
                       f"{number}\n"
@@ -1320,10 +1278,10 @@ jobs:
                       "\n\n"
                   )
 
-                  number += 1
 
           print(
-              "✅ OCR SRT creation completed."
+              f"✅ OCR SRT created: "
+              f"{len(cleaned)} entries"
           )
           PY
 
@@ -1451,7 +1409,7 @@ jobs:
           fi
 
       # ============================================================
-      # SEND VIDEO TO TELEGRAM
+      # SEND VIDEO
       # ============================================================
 
       - name: Send video result to Telegram
