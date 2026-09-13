@@ -766,6 +766,7 @@ jobs:
           INPUT_FILE = "speech.wav"
           OUTPUT_FILE = "speech.srt"
 
+          # Keep Medium because Small missed dialogue
           MODEL_NAME = "medium"
 
 
@@ -815,22 +816,28 @@ jobs:
           print("========================================")
           print("🧠 Loading Whisper model...")
           print(f"📦 Model: {MODEL_NAME}")
+          print("⚙️ Device: CPU")
+          print("⚙️ Compute type: int8")
 
           model = WhisperModel(
               MODEL_NAME,
               device="cpu",
-              compute_type="int8"
+              compute_type="int8",
+              cpu_threads=4,
+              num_workers=1
           )
 
+          print("✅ Whisper model loaded.")
           print("🎧 Transcribing speech...")
-          print(
-              "🔇 VAD enabled with relaxed speech detection."
-          )
+          print("🔇 VAD enabled with relaxed speech detection.")
+
 
           segments, info = model.transcribe(
               INPUT_FILE,
 
-              beam_size=5,
+              # Reduced from 5 to 3 for better speed
+              # while keeping Medium model quality
+              beam_size=3,
 
               temperature=0,
 
@@ -838,24 +845,38 @@ jobs:
 
               vad_parameters={
                   "min_silence_duration_ms": 700,
-                  "speech_pad_ms": 300
+                  "speech_pad_ms": 300,
+                  "min_speech_duration_ms": 250
               },
 
+              # Keep context between nearby segments
               condition_on_previous_text=True,
 
-              no_speech_threshold=0.80,
+              # Less aggressive than the previous 0.80
+              # so quiet dialogue is less likely to be removed
+              no_speech_threshold=0.90,
 
-              log_prob_threshold=-1.5,
+              # Allow difficult/quiet speech
+              log_prob_threshold=-2.0,
 
-              compression_ratio_threshold=2.8
+              # Less aggressive rejection
+              compression_ratio_threshold=3.5
           )
+
 
           print(
               f"🌐 Detected language: "
               f"{getattr(info, 'language', 'unknown')}"
           )
 
+          print(
+              f"📊 Language probability: "
+              f"{getattr(info, 'language_probability', 0):.3f}"
+          )
+
+
           results = []
+
 
           for segment in segments:
 
@@ -870,7 +891,8 @@ jobs:
                   0.0
               )
 
-              if no_speech_prob > 0.85:
+              # Only reject extremely likely non-speech
+              if no_speech_prob > 0.95:
                   continue
 
               results.append({
@@ -884,6 +906,7 @@ jobs:
                   f"{format_time(segment.end)}] "
                   f"{text}"
               )
+
 
           with open(
               OUTPUT_FILE,
@@ -913,10 +936,14 @@ jobs:
                       "\n\n"
                   )
 
+
           print("========================================")
           print(
               f"✅ SRT created: "
               f"{len(results)} subtitle entries"
+          )
+          print(
+              f"📄 Output file: {OUTPUT_FILE}"
           )
           print("========================================")
           PY
