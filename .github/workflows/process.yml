@@ -829,37 +829,43 @@ jobs:
 
           print("✅ Whisper model loaded.")
           print("🎧 Transcribing speech...")
-          print("🔇 VAD enabled with relaxed speech detection.")
+          print("🔇 VAD enabled with balanced speech detection.")
 
 
           segments, info = model.transcribe(
               INPUT_FILE,
 
-              # Reduced from 5 to 3 for better speed
-              # while keeping Medium model quality
+              # Medium quality with reasonable speed
               beam_size=3,
 
               temperature=0,
 
+              # Keep VAD enabled to reduce
+              # music/drum hallucinations
               vad_filter=True,
 
               vad_parameters={
-                  "min_silence_duration_ms": 700,
-                  "speech_pad_ms": 300,
-                  "min_speech_duration_ms": 250
+
+                  # Detect speech sooner after short pauses
+                  "min_silence_duration_ms": 500,
+
+                  # Protect the beginning/end of dialogue
+                  "speech_pad_ms": 400,
+
+                  # Keep short dialogue segments
+                  "min_speech_duration_ms": 150
               },
 
               # Keep context between nearby segments
               condition_on_previous_text=True,
 
-              # Less aggressive than the previous 0.80
-              # so quiet dialogue is less likely to be removed
-              no_speech_threshold=0.90,
+              # Do not reject quiet dialogue too easily
+              no_speech_threshold=0.92,
 
-              # Allow difficult/quiet speech
-              log_prob_threshold=-2.0,
+              # Allow difficult speech over drums/music
+              log_prob_threshold=-2.5,
 
-              # Less aggressive rejection
+              # Reduce false rejection
               compression_ratio_threshold=3.5
           )
 
@@ -891,8 +897,8 @@ jobs:
                   0.0
               )
 
-              # Only reject extremely likely non-speech
-              if no_speech_prob > 0.95:
+              # Reject only very likely non-speech
+              if no_speech_prob > 0.97:
                   continue
 
               results.append({
@@ -906,6 +912,42 @@ jobs:
                   f"{format_time(segment.end)}] "
                   f"{text}"
               )
+
+
+          # Remove immediate duplicate segments
+          # that Whisper can sometimes produce
+          cleaned_results = []
+
+          for item in results:
+
+              if cleaned_results:
+
+                  previous = cleaned_results[-1]
+
+                  previous_text = previous["text"].strip()
+                  current_text = item["text"].strip()
+
+                  same_text = (
+                      previous_text.lower()
+                      == current_text.lower()
+                  )
+
+                  overlapping = (
+                      item["start"]
+                      <= previous["end"] + 0.35
+                  )
+
+                  if same_text and overlapping:
+
+                      if item["end"] > previous["end"]:
+                          previous["end"] = item["end"]
+
+                      continue
+
+              cleaned_results.append(item)
+
+
+          results = cleaned_results
 
 
           with open(
