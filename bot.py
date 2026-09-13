@@ -161,8 +161,12 @@ async def menu_button(update, context):
 
     elif query.data == "speech":
 
+        context.user_data["mode"] = "speech"
+
         await query.edit_message_text(
-            "🎙️ تحويل الصوت إلى SRT هيتضاف في الخطوة القادمة."
+            "🎙️ تحويل الكلام المنطوق إلى SRT\n\n"
+            "📹 ابعت الآن الفيديو أو الملف الصوتي.\n\n"
+            "🔇 سيتم تجاهل الصمت والموسيقى والمؤثرات الصوتية قدر الإمكان."
         )
 
 
@@ -267,7 +271,8 @@ async def receive_text(update, context):
     if mode in (
         "download",
         "convert",
-        "ocr"
+        "ocr",
+        "speech"
     ):
 
         if not (
@@ -277,7 +282,7 @@ async def receive_text(update, context):
 
             await update.message.reply_text(
                 "❌ الرابط غير صحيح.\n\n"
-                "ابعت رابط فيديو مباشر يبدأ بـ http:// أو https://"
+                "ابعت رابط فيديو أو ملف صوتي مباشر يبدأ بـ http:// أو https://"
             )
 
             return
@@ -289,6 +294,10 @@ async def receive_text(update, context):
         if mode == "ocr":
 
             operation = "video_ocr"
+
+        elif mode == "speech":
+
+            operation = "audio_srt"
 
         else:
 
@@ -322,6 +331,15 @@ async def receive_text(update, context):
                     await update.message.reply_text(
                         "✅ بدأ استخراج الكلام من الشاشة.\n\n"
                         "📥 GitHub يقوم الآن بتحميل الفيديو.\n"
+                        "📤 عند الانتهاء سيصل ملف SRT هنا."
+                    )
+
+                elif mode == "speech":
+
+                    await update.message.reply_text(
+                        "✅ بدأ استخراج الكلام المنطوق.\n\n"
+                        "📥 GitHub يقوم الآن بتحميل الملف.\n"
+                        "🎙️ يتم تجاهل الصمت والموسيقى والمؤثرات قدر الإمكان.\n"
                         "📤 عند الانتهاء سيصل ملف SRT هنا."
                     )
 
@@ -368,7 +386,8 @@ async def receive_video(update, context):
     if mode not in (
         "download",
         "convert",
-        "ocr"
+        "ocr",
+        "speech"
     ):
 
         await update.message.reply_text(
@@ -396,17 +415,35 @@ async def receive_video(update, context):
 
         operation = "video_ocr"
 
+    elif mode == "speech":
+
+        operation = "audio_srt"
+
     else:
 
         operation = "video"
 
 
-    await update.message.reply_text(
-        "⏳ تم استلام الفيديو.\n\n"
-        "📥 سيتم تنزيله مباشرة على GitHub، "
-        "وليس على هاتفك.\n\n"
-        "🚀 جاري تشغيل المعالجة..."
-    )
+    if mode == "speech":
+
+        message = (
+            "⏳ تم استلام الفيديو.\n\n"
+            "📥 سيتم تنزيله مباشرة على GitHub، "
+            "وليس على هاتفك.\n\n"
+            "🎙️ جاري استخراج الكلام المنطوق فقط..."
+        )
+
+    else:
+
+        message = (
+            "⏳ تم استلام الفيديو.\n\n"
+            "📥 سيتم تنزيله مباشرة على GitHub، "
+            "وليس على هاتفك.\n\n"
+            "🚀 جاري تشغيل المعالجة..."
+        )
+
+
+    await update.message.reply_text(message)
 
 
     try:
@@ -425,11 +462,22 @@ async def receive_video(update, context):
 
         if response.status_code == 204:
 
-            await update.message.reply_text(
-                "✅ تم تشغيل GitHub.\n\n"
-                "📥 GitHub يقوم الآن بسحب الفيديو من تيليجرام.\n"
-                "📤 بعد انتهاء المعالجة سيصل الناتج هنا."
-            )
+            if mode == "speech":
+
+                await update.message.reply_text(
+                    "✅ تم تشغيل GitHub.\n\n"
+                    "📥 GitHub يقوم الآن بسحب الفيديو من تيليجرام.\n"
+                    "🎙️ سيتم استخراج الكلام المنطوق فقط.\n"
+                    "📤 عند الانتهاء سيصل ملف SRT هنا."
+                )
+
+            else:
+
+                await update.message.reply_text(
+                    "✅ تم تشغيل GitHub.\n\n"
+                    "📥 GitHub يقوم الآن بسحب الفيديو من تيليجرام.\n"
+                    "📤 بعد انتهاء المعالجة سيصل الناتج هنا."
+                )
 
         else:
 
@@ -526,6 +574,99 @@ async def receive_document(update, context):
 
                 await update.message.reply_text(
                     "❌ فشل تشغيل الترجمة.\n\n"
+                    f"كود الخطأ: {response.status_code}\n"
+                    f"{response.text[:500]}"
+                )
+
+
+        except Exception as e:
+
+            await update.message.reply_text(
+                "❌ حدث خطأ:\n\n"
+                f"{str(e)}"
+            )
+
+
+        return
+
+
+    # =========================
+    # AUDIO / VIDEO FOR SPEECH
+    # =========================
+
+    if mode == "speech":
+
+        media_extensions = (
+            ".mp4",
+            ".mkv",
+            ".avi",
+            ".mov",
+            ".webm",
+            ".m4v",
+            ".ts",
+            ".mp3",
+            ".wav",
+            ".m4a",
+            ".aac",
+            ".ogg",
+            ".opus",
+            ".flac",
+            ".amr",
+            ".wma"
+        )
+
+
+        if not file_name.lower().endswith(
+            media_extensions
+        ):
+
+            await update.message.reply_text(
+                "❌ ابعت فيديو أو ملف صوتي مدعوم."
+            )
+
+            return
+
+
+        chat_id = update.effective_chat.id
+
+        message_id = update.message.message_id
+
+
+        await update.message.reply_text(
+            "⏳ تم استلام الملف.\n\n"
+            "📥 سيتم تنزيله مباشرة على GitHub، "
+            "وليس على هاتفك.\n\n"
+            "🎙️ جاري استخراج الكلام المنطوق فقط..."
+        )
+
+
+        try:
+
+            response = github_dispatch(
+                chat_id=chat_id,
+                operation="audio_srt",
+                source_type="telegram",
+                video_url="",
+                telegram_message_id=message_id,
+                resolution="same",
+                srt_file_id="",
+                subtitle_url=""
+            )
+
+
+            if response.status_code == 204:
+
+                await update.message.reply_text(
+                    "✅ تم تشغيل GitHub.\n\n"
+                    "📥 GitHub يقوم الآن بسحب الملف من تيليجرام.\n"
+                    "🎙️ سيتم تجاهل الصمت والموسيقى والمؤثرات قدر الإمكان.\n"
+                    "📤 عند الانتهاء سيصل ملف SRT هنا."
+                )
+
+            else:
+
+                await update.message.reply_text(
+                    "❌ فشل تشغيل GitHub.\n\n"
                     f"كود الخطأ: {response.status_code}\n"
                     f"{response.text[:500]}"
                 )
