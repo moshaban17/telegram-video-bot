@@ -758,7 +758,6 @@ jobs:
         run: |
 
           cat > speech_to_srt.py <<'PY'
-          import os
           import re
 
           from faster_whisper import WhisperModel
@@ -825,22 +824,30 @@ jobs:
 
           print("🎧 Transcribing speech...")
           print(
-              "🔇 VAD enabled: silence/non-speech filtered."
+              "🔇 VAD enabled with relaxed speech detection."
           )
 
           segments, info = model.transcribe(
               INPUT_FILE,
+
               beam_size=5,
+
               temperature=0,
+
               vad_filter=True,
+
               vad_parameters={
-                  "min_silence_duration_ms": 500,
-                  "speech_pad_ms": 200
+                  "min_silence_duration_ms": 700,
+                  "speech_pad_ms": 300
               },
-              condition_on_previous_text=False,
-              no_speech_threshold=0.60,
-              log_prob_threshold=-1.0,
-              compression_ratio_threshold=2.4
+
+              condition_on_previous_text=True,
+
+              no_speech_threshold=0.80,
+
+              log_prob_threshold=-1.5,
+
+              compression_ratio_threshold=2.8
           )
 
           print(
@@ -863,16 +870,7 @@ jobs:
                   0.0
               )
 
-              avg_logprob = getattr(
-                  segment,
-                  "avg_logprob",
-                  0.0
-              )
-
-              if no_speech_prob > 0.60:
-                  continue
-
-              if avg_logprob < -1.2:
+              if no_speech_prob > 0.85:
                   continue
 
               results.append({
