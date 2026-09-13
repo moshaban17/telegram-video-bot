@@ -766,7 +766,7 @@ jobs:
           INPUT_FILE = "speech.wav"
           OUTPUT_FILE = "speech.srt"
 
-          MODEL_NAME = "small"
+          MODEL_NAME = "medium"
 
 
           def format_time(seconds):
