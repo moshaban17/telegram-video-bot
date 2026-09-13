@@ -67,6 +67,7 @@ on:
           - "video"
           - "translate_srt"
           - "video_ocr"
+          - "audio_srt"
         default: "video"
 
 jobs:
@@ -371,13 +372,21 @@ jobs:
             -F "caption=🇸🇦 تمت ترجمة ملف SRT إلى العربية الفصحى بنجاح."
 
       # ============================================================
-      # INSTALL TELEGRAM LIBRARY
+      # INSTALL TELEGRAM + AUDIO LIBRARIES
       # ============================================================
 
       - name: Install Telegram library
-        if: ${{ inputs.operation == 'video' || inputs.operation == 'video_ocr' }}
+        if: ${{ inputs.operation == 'video' || inputs.operation == 'video_ocr' || inputs.operation == 'audio_srt' }}
         run: |
           python -m pip install "telethon<2" cryptg
+
+      - name: Install audio transcription tools
+        if: ${{ inputs.operation == 'audio_srt' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg aria2
+          python -m pip install --upgrade pip
+          pip install faster-whisper
 
       # ============================================================
       # VIDEO TOOLS
@@ -392,11 +401,11 @@ jobs:
             aria2
 
       # ============================================================
-      # TELEGRAM VIDEO INPUT
+      # TELEGRAM MEDIA INPUT
       # ============================================================
 
-      - name: Download video from Telegram
-        if: ${{ (inputs.operation == 'video' || inputs.operation == 'video_ocr') && inputs.source_type == 'telegram' }}
+      - name: Download media from Telegram
+        if: ${{ (inputs.operation == 'video' || inputs.operation == 'video_ocr' || inputs.operation == 'audio_srt') && inputs.source_type == 'telegram' }}
         env:
           API_ID: ${{ secrets.API_ID }}
           API_HASH: ${{ secrets.API_HASH }}
@@ -413,6 +422,29 @@ jobs:
           from telethon.sessions import StringSession
 
 
+          VIDEO_EXTENSIONS = (
+              ".mp4",
+              ".mkv",
+              ".avi",
+              ".mov",
+              ".webm",
+              ".m4v",
+              ".ts"
+          )
+
+          AUDIO_EXTENSIONS = (
+              ".mp3",
+              ".wav",
+              ".m4a",
+              ".aac",
+              ".ogg",
+              ".opus",
+              ".flac",
+              ".amr",
+              ".wma"
+          )
+
+
           async def main():
 
               api_id = int(os.environ["API_ID"])
@@ -421,6 +453,11 @@ jobs:
 
               user_id = int(os.environ["CHAT_ID"])
 
+              operation = os.environ.get(
+                  "OPERATION",
+                  "video"
+              )
+
               bot_username = (
                   os.environ["BOT_USERNAME"]
                   .strip()
@@ -428,10 +465,11 @@ jobs:
               )
 
               print("========================================")
-              print("🔍 Telegram video search")
+              print("🔍 Telegram media search")
               print("========================================")
               print(f"👤 User ID: {user_id}")
               print(f"🤖 Bot: @{bot_username}")
+              print(f"⚙️ Operation: {operation}")
 
               client = TelegramClient(
                   StringSession(session),
@@ -493,13 +531,9 @@ jobs:
                   f"   Bot ID: {entity.id}"
               )
 
-              # ------------------------------------------------
-              # البحث مباشرة عن آخر فيديو أرسله المستخدم
-              # ------------------------------------------------
-
               print(
-                  "🔎 Searching for the latest video "
-                  "sent by the user..."
+                  "🔎 Searching for the latest "
+                  "media sent by the user..."
               )
 
               found = None
@@ -550,6 +584,8 @@ jobs:
                       or ""
                   )
 
+                  name_lower = name.lower()
+
                   print(
                       f"      📦 File: {name} | "
                       f"MIME: {mime}"
@@ -557,29 +593,42 @@ jobs:
 
                   is_video = (
                       mime.startswith("video/")
-                      or name.lower().endswith((
-                          ".mp4",
-                          ".mkv",
-                          ".avi",
-                          ".mov",
-                          ".webm",
-                          ".m4v",
-                          ".ts"
-                      ))
+                      or name_lower.endswith(
+                          VIDEO_EXTENSIONS
+                      )
                   )
 
-                  if not is_video:
+                  is_audio = (
+                      mime.startswith("audio/")
+                      or name_lower.endswith(
+                          AUDIO_EXTENSIONS
+                      )
+                  )
+
+                  if operation == "audio_srt":
+
+                      valid_media = (
+                          is_video or is_audio
+                      )
+
+                  else:
+
+                      valid_media = is_video
+
+                  if not valid_media:
                       continue
 
                   found = item
 
                   print("========================================")
-                  print("✅ TARGET VIDEO FOUND")
+                  print("✅ TARGET MEDIA FOUND")
                   print(f"   Telegram ID: {item.id}")
                   print(f"   Sender ID: {sender_id}")
                   print(f"   Date: {item.date}")
                   print(f"   File: {name}")
                   print(f"   MIME: {mime}")
+                  print(f"   Video: {is_video}")
+                  print(f"   Audio: {is_audio}")
                   print("========================================")
 
                   break
@@ -593,16 +642,12 @@ jobs:
                   await client.disconnect()
 
                   raise RuntimeError(
-                      "No video sent by the user "
+                      "No suitable media sent by the user "
                       "was found in the bot chat."
                   )
 
-              # ------------------------------------------------
-              # تحميل الفيديو مباشرة إلى GitHub
-              # ------------------------------------------------
-
               print(
-                  "📥 Downloading video directly to GitHub..."
+                  "📥 Downloading media directly to GitHub..."
               )
 
               path = await found.download_media(
@@ -614,7 +659,7 @@ jobs:
                   await client.disconnect()
 
                   raise RuntimeError(
-                      "Telegram video download failed."
+                      "Telegram media download failed."
                   )
 
               size = os.path.getsize(path)
@@ -622,7 +667,7 @@ jobs:
               size_mb = size / 1024 / 1024
 
               print("========================================")
-              print("✅ VIDEO DOWNLOADED SUCCESSFULLY")
+              print("✅ MEDIA DOWNLOADED SUCCESSFULLY")
               print(f"📁 Path: {path}")
               print(f"📦 Size: {size_mb:.2f} MB")
               print("========================================")
@@ -633,6 +678,7 @@ jobs:
           asyncio.run(main())
           PY
 
+          OPERATION="${{ inputs.operation }}" \
           python download_telegram.py
 
       # ============================================================
@@ -660,6 +706,238 @@ jobs:
             --console-log-level=notice \
             -o input.mkv \
             "${{ inputs.video_url }}"
+
+      # ============================================================
+      # URL AUDIO / VIDEO INPUT FOR SPEECH TO SRT
+      # ============================================================
+
+      - name: Download media from URL for speech to SRT
+        if: ${{ inputs.operation == 'audio_srt' && inputs.source_type == 'url' }}
+        run: |
+
+          if [ -z "${{ inputs.video_url }}" ]; then
+            echo "❌ video_url is empty."
+            exit 1
+          fi
+
+          echo "📥 Downloading audio/video from URL..."
+
+          aria2c \
+            --max-connection-per-server=16 \
+            --split=16 \
+            --min-split-size=1M \
+            --file-allocation=none \
+            --continue=true \
+            --summary-interval=5 \
+            --console-log-level=notice \
+            -o input.mkv \
+            "${{ inputs.video_url }}"
+
+      # ============================================================
+      # SPEECH TO SRT
+      # ============================================================
+
+      - name: Extract audio for speech recognition
+        if: ${{ inputs.operation == 'audio_srt' }}
+        run: |
+
+          echo "🎙️ Extracting audio..."
+
+          ffmpeg -y \
+            -i input.mkv \
+            -vn \
+            -ac 1 \
+            -ar 16000 \
+            -c:a pcm_s16le \
+            speech.wav
+
+          echo "✅ Audio extraction completed."
+
+      - name: Convert speech to SRT
+        if: ${{ inputs.operation == 'audio_srt' }}
+        run: |
+
+          cat > speech_to_srt.py <<'PY'
+          import os
+          import re
+
+          from faster_whisper import WhisperModel
+
+
+          INPUT_FILE = "speech.wav"
+          OUTPUT_FILE = "speech.srt"
+
+          MODEL_NAME = "small"
+
+
+          def format_time(seconds):
+
+              total_ms = int(
+                  round(seconds * 1000)
+              )
+
+              hours = total_ms // 3600000
+
+              minutes = (
+                  total_ms % 3600000
+              ) // 60000
+
+              secs = (
+                  total_ms % 60000
+              ) // 1000
+
+              milliseconds = (
+                  total_ms % 1000
+              )
+
+              return (
+                  f"{hours:02d}:"
+                  f"{minutes:02d}:"
+                  f"{secs:02d},"
+                  f"{milliseconds:03d}"
+              )
+
+
+          def clean_text(text):
+
+              text = text.strip()
+
+              text = re.sub(
+                  r"\s+",
+                  " ",
+                  text
+              )
+
+              return text
+
+
+          print("========================================")
+          print("🎙️ SPEECH TO SRT")
+          print("========================================")
+          print("🧠 Loading Whisper model...")
+          print(f"📦 Model: {MODEL_NAME}")
+
+          model = WhisperModel(
+              MODEL_NAME,
+              device="cpu",
+              compute_type="int8"
+          )
+
+          print("🎧 Transcribing speech...")
+          print(
+              "🔇 VAD enabled: silence/non-speech filtered."
+          )
+
+          segments, info = model.transcribe(
+              INPUT_FILE,
+              beam_size=5,
+              temperature=0,
+              vad_filter=True,
+              vad_parameters={
+                  "min_silence_duration_ms": 500,
+                  "speech_pad_ms": 200
+              },
+              condition_on_previous_text=False,
+              no_speech_threshold=0.60,
+              log_prob_threshold=-1.0,
+              compression_ratio_threshold=2.4
+          )
+
+          print(
+              f"🌐 Detected language: "
+              f"{getattr(info, 'language', 'unknown')}"
+          )
+
+          results = []
+
+          for segment in segments:
+
+              text = clean_text(segment.text)
+
+              if not text:
+                  continue
+
+              no_speech_prob = getattr(
+                  segment,
+                  "no_speech_prob",
+                  0.0
+              )
+
+              avg_logprob = getattr(
+                  segment,
+                  "avg_logprob",
+                  0.0
+              )
+
+              if no_speech_prob > 0.60:
+                  continue
+
+              if avg_logprob < -1.2:
+                  continue
+
+              results.append({
+                  "start": segment.start,
+                  "end": segment.end,
+                  "text": text
+              })
+
+              print(
+                  f"[{format_time(segment.start)} --> "
+                  f"{format_time(segment.end)}] "
+                  f"{text}"
+              )
+
+          with open(
+              OUTPUT_FILE,
+              "w",
+              encoding="utf-8"
+          ) as f:
+
+              for number, item in enumerate(
+                  results,
+                  start=1
+              ):
+
+                  f.write(
+                      f"{number}\n"
+                  )
+
+                  f.write(
+                      f"{format_time(item['start'])} --> "
+                      f"{format_time(item['end'])}\n"
+                  )
+
+                  f.write(
+                      item["text"]
+                  )
+
+                  f.write(
+                      "\n\n"
+                  )
+
+          print("========================================")
+          print(
+              f"✅ SRT created: "
+              f"{len(results)} subtitle entries"
+          )
+          print("========================================")
+          PY
+
+          python speech_to_srt.py
+
+      - name: Send speech SRT to Telegram
+        if: ${{ inputs.operation == 'audio_srt' }}
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          CHAT_ID: ${{ inputs.chat_id }}
+        run: |
+
+          curl -sS \
+            -X POST \
+            "https://api.telegram.org/bot${BOT_TOKEN}/sendDocument" \
+            -F "chat_id=${CHAT_ID}" \
+            -F "document=@speech.srt" \
+            -F "caption=🎙️ تم استخراج الكلام المنطوق فقط إلى SRT."
 
       # ============================================================
       # OCR
@@ -1182,7 +1460,10 @@ jobs:
           rm -f input.srt
           rm -f arabic.srt
           rm -f screen_text.srt
+          rm -f speech.wav
+          rm -f speech.srt
           rm -f send.py
           rm -f download_telegram.py
           rm -f translate_srt.py
           rm -f video_ocr.py
+          rm -f speech_to_srt.py
