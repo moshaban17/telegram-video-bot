@@ -86,7 +86,7 @@ jobs:
         if: ${{ inputs.operation == 'translate_srt' }}
         run: |
           python -m pip install --upgrade pip
-          pip install google-genai requests
+          pip install -U google-genai requests
 
       - name: Download SRT from Telegram
         if: ${{ inputs.operation == 'translate_srt' }}
@@ -151,12 +151,18 @@ jobs:
           import time
 
           from google import genai
+          from google.genai import errors
 
 
           INPUT_FILE = "input.srt"
           OUTPUT_FILE = "arabic.srt"
 
-          MODEL = "gemini-3.8-flash"
+          PRIMARY_MODEL = "gemini-3.8-flash"
+          FALLBACK_MODEL = "gemini-3.7-flash"
+
+          BATCH_SIZE = 80
+
+          MAX_RETRIES_PER_MODEL = 5
 
 
           PROMPT = r"""
@@ -253,7 +259,166 @@ jobs:
               return text.strip()
 
 
-          def translate_batch(client, batch):
+          def is_retryable_error(exc):
+
+              code = getattr(
+                  exc,
+                  "code",
+                  None
+              )
+
+              status_code = getattr(
+                  exc,
+                  "status_code",
+                  None
+              )
+
+              if code in (
+                  408,
+                  429,
+                  500,
+                  502,
+                  503,
+                  504
+              ):
+                  return True
+
+              if status_code in (
+                  408,
+                  429,
+                  500,
+                  502,
+                  503,
+                  504
+              ):
+                  return True
+
+              text = str(exc).upper()
+
+              for marker in (
+                  "503",
+                  "429",
+                  "500",
+                  "502",
+                  "504",
+                  "UNAVAILABLE",
+                  "RESOURCE_EXHAUSTED",
+                  "INTERNAL",
+                  "TIMEOUT"
+              ):
+
+                  if marker in text:
+                      return True
+
+              return False
+
+
+          def call_gemini(
+              client,
+              model,
+              prompt
+          ):
+
+              last_error = None
+
+              for attempt in range(
+                  1,
+                  MAX_RETRIES_PER_MODEL + 1
+              ):
+
+                  try:
+
+                      print(
+                          f"🤖 Model: {model} | "
+                          f"Attempt {attempt}/"
+                          f"{MAX_RETRIES_PER_MODEL}"
+                      )
+
+                      response = (
+                          client.models.generate_content(
+                              model=model,
+                              contents=prompt
+                          )
+                      )
+
+                      if not response.text:
+
+                          raise RuntimeError(
+                              "Gemini returned an empty response."
+                          )
+
+                      return response.text
+
+                  except Exception as exc:
+
+                      last_error = exc
+
+                      print(
+                          f"⚠️ Gemini error: {exc}"
+                      )
+
+                      if not is_retryable_error(
+                          exc
+                      ):
+
+                          raise
+
+                      if attempt >= MAX_RETRIES_PER_MODEL:
+                          break
+
+                      wait_seconds = min(
+                          60,
+                          5 * (2 ** (attempt - 1))
+                      )
+
+                      print(
+                          f"⏳ Waiting "
+                          f"{wait_seconds} seconds "
+                          f"before retry..."
+                      )
+
+                      time.sleep(
+                          wait_seconds
+                      )
+
+              raise last_error
+
+
+          def validate_translation(
+              original,
+              translated
+          ):
+
+              if len(translated) != len(original):
+
+                  raise RuntimeError(
+                      f"Expected {len(original)} "
+                      f"subtitles but received "
+                      f"{len(translated)}"
+                  )
+
+              for old, new in zip(
+                  original,
+                  translated
+              ):
+
+                  if old["number"] != new["number"]:
+
+                      raise RuntimeError(
+                          "Subtitle numbering changed."
+                      )
+
+                  if old["timing"] != new["timing"]:
+
+                      raise RuntimeError(
+                          "Subtitle timing changed."
+                      )
+
+
+          def translate_batch(
+              client,
+              batch
+          ):
 
               source = build_srt(batch)
 
@@ -263,51 +428,88 @@ jobs:
                   + source
               )
 
-              response = client.models.generate_content(
-                  model=MODEL,
-                  contents=prompt,
-                  config={
-                      "temperature": 0.2
-                  }
+              print(
+                  "🚀 Sending batch to Gemini..."
               )
 
-              if not response.text:
-                  raise RuntimeError(
-                      "Gemini returned an empty response."
+              # ------------------------------------------------
+              # First try the primary model.
+              # ------------------------------------------------
+
+              try:
+
+                  response_text = call_gemini(
+                      client,
+                      PRIMARY_MODEL,
+                      prompt
                   )
+
+                  translated = parse_srt(
+                      extract_answer(
+                          response_text
+                      )
+                  )
+
+                  validate_translation(
+                      batch,
+                      translated
+                  )
+
+                  print(
+                      f"✅ Batch translated with "
+                      f"{PRIMARY_MODEL}"
+                  )
+
+                  return translated
+
+              except Exception as primary_error:
+
+                  print(
+                      "⚠️ Primary model failed:"
+                  )
+
+                  print(
+                      primary_error
+                  )
+
+                  print(
+                      f"🔄 Switching to "
+                      f"{FALLBACK_MODEL}..."
+                  )
+
+
+              # ------------------------------------------------
+              # Fallback model.
+              # ------------------------------------------------
+
+              response_text = call_gemini(
+                  client,
+                  FALLBACK_MODEL,
+                  prompt
+              )
 
               translated = parse_srt(
-                  extract_answer(response.text)
+                  extract_answer(
+                      response_text
+                  )
               )
 
-              if len(translated) != len(batch):
-
-                  raise RuntimeError(
-                      f"Expected {len(batch)} subtitles "
-                      f"but received {len(translated)}"
-                  )
-
-              for original, new in zip(
+              validate_translation(
                   batch,
                   translated
-              ):
+              )
 
-                  if original["number"] != new["number"]:
+              print(
+                  f"✅ Batch translated with "
+                  f"{FALLBACK_MODEL}"
+              )
 
-                      raise RuntimeError(
-                          "Subtitle numbering changed."
-                      )
+              return translated
 
-                  if original["timing"] != new["timing"]:
 
-                      raise RuntimeError(
-                          "Subtitle timing changed."
-                      )
-
-                  original["text"] = new["text"]
-
-              return batch
-
+          # ====================================================
+          # READ INPUT
+          # ====================================================
 
           with open(
               INPUT_FILE,
@@ -320,21 +522,33 @@ jobs:
 
           subtitles = parse_srt(text)
 
+
           if not subtitles:
+
               raise RuntimeError(
                   "No valid subtitles found."
               )
 
 
-          client = genai.Client(
-              api_key=os.environ["GEMINI_API_KEY"]
+          print(
+              f"📄 Total subtitles: "
+              f"{len(subtitles)}"
           )
 
 
-          BATCH_SIZE = 80
+          client = genai.Client(
+              api_key=os.environ[
+                  "GEMINI_API_KEY"
+              ]
+          )
+
 
           translated_all = []
 
+
+          # ====================================================
+          # TRANSLATE
+          # ====================================================
 
           for start in range(
               0,
@@ -347,21 +561,103 @@ jobs:
                   len(subtitles)
               )
 
+
+              print("")
               print(
-                  f"Translating subtitles "
+                  "========================================"
+              )
+
+              print(
+                  f"🌐 Translating subtitles "
                   f"{start + 1}-{end} "
                   f"of {len(subtitles)}"
               )
 
-              translated_all.extend(
+              print(
+                  "========================================"
+              )
+
+
+              batch = subtitles[
+                  start:end
+              ]
+
+
+              translated_batch = (
                   translate_batch(
                       client,
-                      subtitles[start:end]
+                      batch
                   )
               )
 
+
+              translated_all.extend(
+                  translated_batch
+              )
+
+
+              # Save progress after EVERY batch.
+              # If a later batch fails, all previous
+              # successful batches are already written.
+              with open(
+                  OUTPUT_FILE,
+                  "w",
+                  encoding="utf-8"
+              ) as f:
+
+                  f.write(
+                      build_srt(
+                          translated_all
+                      )
+                  )
+
+
+              print(
+                  f"💾 Saved progress: "
+                  f"{len(translated_all)} "
+                  f"subtitles"
+              )
+
+
               if end < len(subtitles):
+
                   time.sleep(2)
+
+
+          # ====================================================
+          # FINAL VALIDATION
+          # ====================================================
+
+          if len(translated_all) != len(subtitles):
+
+              raise RuntimeError(
+                  "Final subtitle count does not match "
+                  "the original subtitle count."
+              )
+
+
+          for original, translated in zip(
+              subtitles,
+              translated_all
+          ):
+
+              if (
+                  original["number"]
+                  != translated["number"]
+              ):
+
+                  raise RuntimeError(
+                      "Final subtitle numbering changed."
+                  )
+
+              if (
+                  original["timing"]
+                  != translated["timing"]
+              ):
+
+                  raise RuntimeError(
+                      "Final subtitle timing changed."
+                  )
 
 
           with open(
@@ -371,11 +667,29 @@ jobs:
           ) as f:
 
               f.write(
-                  build_srt(translated_all)
+                  build_srt(
+                      translated_all
+                  )
               )
 
 
-          print("Translation completed.")
+          print("")
+          print(
+              "========================================"
+          )
+
+          print(
+              f"✅ Translation completed: "
+              f"{len(translated_all)} subtitles"
+          )
+
+          print(
+              f"📄 Output: {OUTPUT_FILE}"
+          )
+
+          print(
+              "========================================"
+          )
           PY
 
           python translate_srt.py
@@ -489,6 +803,7 @@ jobs:
                   os.environ["API_HASH"]
               )
 
+
               await client.start()
 
 
@@ -498,6 +813,7 @@ jobs:
 
 
               me = await client.get_me()
+
 
               if me.id != user_id:
 
@@ -513,7 +829,10 @@ jobs:
               )
 
 
-              operation = os.environ["OPERATION"]
+              operation = os.environ[
+                  "OPERATION"
+              ]
+
 
               message_id = (
                   os.environ.get(
@@ -532,13 +851,14 @@ jobs:
 
 
               # ------------------------------------------------
-              # Prefer exact Telegram message ID
+              # Exact message first
               # ------------------------------------------------
 
               if message_id:
 
                   print(
-                      f"🔎 Searching exact message {message_id}..."
+                      f"🔎 Searching exact message "
+                      f"{message_id}..."
                   )
 
                   try:
@@ -568,6 +888,7 @@ jobs:
                               or ""
                           )
 
+
                           name = (
                               getattr(
                                   item.file,
@@ -596,17 +917,22 @@ jobs:
 
                           if operation == "audio_srt":
 
-                              if is_video or is_audio:
+                              if (
+                                  is_video
+                                  or is_audio
+                              ):
+
                                   found = item
 
                           else:
 
                               if is_video:
+
                                   found = item
 
 
               # ------------------------------------------------
-              # Fallback: search recent messages
+              # Fallback
               # ------------------------------------------------
 
               if not found:
@@ -614,6 +940,7 @@ jobs:
                   print(
                       "🔎 Searching last 200 messages..."
                   )
+
 
                   async for item in client.iter_messages(
                       entity,
@@ -667,8 +994,10 @@ jobs:
                       if operation == "audio_srt":
 
                           if not (
-                              is_video or is_audio
+                              is_video
+                              or is_audio
                           ):
+
                               continue
 
                       else:
@@ -678,6 +1007,7 @@ jobs:
 
 
                       found = item
+
                       break
 
 
@@ -689,7 +1019,8 @@ jobs:
 
 
               print(
-                  f"✅ Found Telegram message {found.id}"
+                  f"✅ Found Telegram message "
+                  f"{found.id}"
               )
 
 
@@ -856,9 +1187,9 @@ jobs:
 
           def normalize_text(text):
 
-              text = clean_text(text)
-
-              return text.lower()
+              return clean_text(
+                  text
+              ).lower()
 
 
           print("========================================")
@@ -900,9 +1231,6 @@ jobs:
                   "min_speech_duration_ms": 150
               },
 
-              # Important:
-              # prevents one hallucinated phrase from
-              # being repeatedly fed into the next segment.
               condition_on_previous_text=False,
 
               no_speech_threshold=0.92,
@@ -947,7 +1275,6 @@ jobs:
                   segment.end
               )
 
-
               duration = end - start
 
 
@@ -978,14 +1305,10 @@ jobs:
               )
 
 
-              # ------------------------------------------------
-              # Strong hallucination protection
-              # ------------------------------------------------
-
               if no_speech_prob > 0.97:
 
                   print(
-                      "⚠️ Skipping no-speech segment:"
+                      "⚠️ Skipping no-speech:"
                       f" {text}"
                   )
 
@@ -995,7 +1318,7 @@ jobs:
               if duration > 30:
 
                   print(
-                      "⚠️ Skipping very long segment:"
+                      "⚠️ Skipping very long:"
                       f" {duration:.1f}s | {text}"
                   )
 
@@ -1017,7 +1340,6 @@ jobs:
               )
 
 
-              # Very low confidence + suspicious repetition
               if (
                   avg_logprob < -2.5
                   and compression_ratio > 2.8
@@ -1031,21 +1353,23 @@ jobs:
                   continue
 
 
-              # ------------------------------------------------
-              # Exact duplicate protection
-              # ------------------------------------------------
-
               duplicate = False
 
 
               for previous in results[-8:]:
 
-                  previous_normalized = normalize_text(
-                      previous["text"]
+                  previous_normalized = (
+                      normalize_text(
+                          previous["text"]
+                      )
                   )
 
 
-                  if normalized != previous_normalized:
+                  if (
+                      normalized
+                      != previous_normalized
+                  ):
+
                       continue
 
 
@@ -1071,16 +1395,14 @@ jobs:
                   continue
 
 
-              # ------------------------------------------------
-              # Repeated-word hallucination protection
-              # ------------------------------------------------
-
               words = normalized.split()
 
 
-              if len(words) >= 3:
+              if len(words) >= 5:
 
-                  unique_words = set(words)
+                  unique_words = set(
+                      words
+                  )
 
                   repetition_ratio = (
                       len(unique_words)
@@ -1088,22 +1410,16 @@ jobs:
                   )
 
 
-                  if (
-                      repetition_ratio < 0.34
-                      and len(words) >= 5
-                  ):
+                  if repetition_ratio < 0.34:
 
                       print(
                           "⚠️ Repeated-word "
-                          f"hallucination removed: {text}"
+                          "hallucination removed:"
+                          f" {text}"
                       )
 
                       continue
 
-
-              # ------------------------------------------------
-              # Save result
-              # ------------------------------------------------
 
               results.append({
                   "start": start,
@@ -1120,7 +1436,7 @@ jobs:
 
 
           # ====================================================
-          # Final cleanup
+          # FINAL CLEANUP
           # ====================================================
 
           cleaned_results = []
@@ -1145,12 +1461,18 @@ jobs:
 
               for previous in cleaned_results[-8:]:
 
-                  previous_normalized = normalize_text(
-                      previous["text"]
+                  previous_normalized = (
+                      normalize_text(
+                          previous["text"]
+                      )
                   )
 
 
-                  if normalized != previous_normalized:
+                  if (
+                      normalized
+                      != previous_normalized
+                  ):
+
                       continue
 
 
@@ -1171,15 +1493,13 @@ jobs:
                   continue
 
 
-              cleaned_results.append(item)
+              cleaned_results.append(
+                  item
+              )
 
 
           results = cleaned_results
 
-
-          # ====================================================
-          # Write SRT
-          # ====================================================
 
           with open(
               OUTPUT_FILE,
@@ -1312,13 +1632,6 @@ jobs:
               cap.get(
                   cv2.CAP_PROP_FRAME_COUNT
               )
-          )
-
-
-          duration = (
-              total_frames / fps
-              if total_frames > 0
-              else 0
           )
 
 
@@ -1779,7 +2092,6 @@ jobs:
 
           du -h "${OUTPUT_FILE}"
 
-
           echo "========================================"
 
 
@@ -1834,7 +2146,9 @@ jobs:
               ]
 
 
-              if not os.path.exists(output_file):
+              if not os.path.exists(
+                  output_file
+              ):
 
                   raise RuntimeError(
                       "Output video does not exist."
@@ -1842,18 +2156,21 @@ jobs:
 
 
               size_mb = (
-                  os.path.getsize(output_file)
+                  os.path.getsize(
+                      output_file
+                  )
                   / 1024
                   / 1024
               )
 
 
               print(
-                  f"📤 Starting Telegram upload..."
+                  "📤 Starting Telegram upload..."
               )
 
               print(
-                  f"📦 File size: {size_mb:.2f} MB"
+                  f"📦 File size: "
+                  f"{size_mb:.2f} MB"
               )
 
 
