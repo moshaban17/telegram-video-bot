@@ -164,11 +164,11 @@ jobs:
           API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
           # ========================================================
-          # CURRENT FREE MODELS
+          # FREE MODEL ROUTER + FREE FALLBACK
           # ========================================================
 
-          PRIMARY_MODEL = "qwen/qwen3-30b-a3b:free"
-          FALLBACK_MODEL = "qwen/qwen3-14b:free"
+          PRIMARY_MODEL = "openrouter/free"
+          FALLBACK_MODEL = "google/gemma-4-31b-it:free"
 
           BATCH_SIZE = 60
           CONTEXT_LINES = 10
