@@ -10,7 +10,7 @@ on:
         default: ""
 
       subtitle_url:
-        description: "Direct subtitle URL"
+        description: "Direct SRT/ASS subtitle URL"
         required: false
         type: string
         default: ""
@@ -65,6 +65,7 @@ on:
         type: choice
         options:
           - "video"
+          - "subtitle"
           - "translate_srt"
           - "video_ocr"
           - "audio_srt"
@@ -938,7 +939,7 @@ jobs:
       # ============================================================
 
       - name: Install Telegram library
-        if: ${{ inputs.operation == 'video' || inputs.operation == 'video_ocr' || inputs.operation == 'audio_srt' }}
+        if: ${{ inputs.operation == 'video' || inputs.operation == 'subtitle' || inputs.operation == 'video_ocr' || inputs.operation == 'audio_srt' }}
         run: |
           python -m pip install "telethon<2" cryptg
 
@@ -959,7 +960,7 @@ jobs:
 
 
       - name: Install video tools
-        if: ${{ inputs.operation == 'video' || inputs.operation == 'video_ocr' }}
+        if: ${{ inputs.operation == 'video' || inputs.operation == 'subtitle' || inputs.operation == 'video_ocr' }}
         run: |
 
           sudo apt-get update
@@ -974,7 +975,7 @@ jobs:
       # ============================================================
 
       - name: Download media from Telegram
-        if: ${{ (inputs.operation == 'video' || inputs.operation == 'video_ocr' || inputs.operation == 'audio_srt') && inputs.source_type == 'telegram' }}
+        if: ${{ (inputs.operation == 'video' || inputs.operation == 'subtitle' || inputs.operation == 'video_ocr' || inputs.operation == 'audio_srt') && inputs.source_type == 'telegram' }}
         env:
           API_ID: ${{ secrets.API_ID }}
           API_HASH: ${{ secrets.API_HASH }}
@@ -1227,7 +1228,7 @@ jobs:
       # ============================================================
 
       - name: Download video from URL
-        if: ${{ (inputs.operation == 'video' || inputs.operation == 'video_ocr') && inputs.source_type == 'url' }}
+        if: ${{ (inputs.operation == 'video' || inputs.operation == 'subtitle' || inputs.operation == 'video_ocr') && inputs.source_type == 'url' }}
         run: |
 
           if [ -z "${{ inputs.video_url }}" ]; then
@@ -1996,7 +1997,7 @@ jobs:
       # ============================================================
 
       - name: Download subtitle from Telegram
-        if: ${{ inputs.operation == 'video' && inputs.srt_file_id != '' }}
+        if: ${{ inputs.operation == 'subtitle' && inputs.srt_file_id != '' }}
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           SUBTITLE_FILE_ID: ${{ inputs.srt_file_id }}
@@ -2097,7 +2098,7 @@ jobs:
       # ============================================================
 
       - name: Download subtitle from URL
-        if: ${{ inputs.operation == 'video' && inputs.subtitle_url != '' && inputs.srt_file_id == '' }}
+        if: ${{ inputs.operation == 'subtitle' && inputs.subtitle_url != '' && inputs.srt_file_id == '' }}
         run: |
 
           if [ -z "${{ inputs.subtitle_url }}" ]; then
@@ -2134,7 +2135,7 @@ jobs:
       # ============================================================
 
       - name: Install subtitle fonts
-        if: ${{ inputs.operation == 'video' && (inputs.srt_file_id != '' || inputs.subtitle_url != '') && inputs.subtitle_type != 'ass' }}
+        if: ${{ inputs.operation == 'subtitle' && (inputs.srt_file_id != '' || inputs.subtitle_url != '') && inputs.subtitle_type != 'ass' }}
         run: |
 
           sudo apt-get update
@@ -2149,7 +2150,7 @@ jobs:
       # ============================================================
 
       - name: Set resolution
-        if: ${{ inputs.operation == 'video' && inputs.resolution != 'same' }}
+        if: ${{ (inputs.operation == 'video' || inputs.operation == 'subtitle') && inputs.resolution != 'same' }}
         run: |
 
           case "${{ inputs.resolution }}" in
@@ -2178,7 +2179,7 @@ jobs:
       # ============================================================
 
       - name: Build SRT subtitle style
-        if: ${{ inputs.operation == 'video' && inputs.subtitle_type != 'ass' && (inputs.srt_file_id != '' || inputs.subtitle_url != '') }}
+        if: ${{ inputs.operation == 'subtitle' && inputs.subtitle_type != 'ass' && (inputs.srt_file_id != '' || inputs.subtitle_url != '') }}
         env:
           FONT_NAME: ${{ inputs.font_name }}
           FONT_SIZE: ${{ inputs.font_size }}
@@ -2225,13 +2226,6 @@ jobs:
               "&H00FFFFFF"
           )
 
-
-          # بدون صندوق:
-          # لا يوجد Outline أو Shadow.
-          #
-          # مع الصندوق:
-          # BorderStyle=3 يجعل الصندوق يتبع مساحة
-          # نص الترجمة بدل شريط كامل بعرض الشاشة.
 
           if subtitle_box == "on":
 
@@ -2285,7 +2279,7 @@ jobs:
       # ============================================================
 
       - name: Process video with SRT subtitle
-        if: ${{ inputs.operation == 'video' && inputs.subtitle_type != 'ass' && (inputs.srt_file_id != '' || inputs.subtitle_url != '') }}
+        if: ${{ inputs.operation == 'subtitle' && inputs.subtitle_type != 'ass' && (inputs.srt_file_id != '' || inputs.subtitle_url != '') }}
         run: |
 
           STYLE=$(cat subtitle_style.txt)
@@ -2329,7 +2323,7 @@ jobs:
       # ============================================================
 
       - name: Process video with ASS subtitle
-        if: ${{ inputs.operation == 'video' && inputs.subtitle_type == 'ass' && (inputs.srt_file_id != '' || inputs.subtitle_url != '') }}
+        if: ${{ inputs.operation == 'subtitle' && inputs.subtitle_type == 'ass' && (inputs.srt_file_id != '' || inputs.subtitle_url != '') }}
         run: |
 
           echo "🎨 ASS subtitle detected."
@@ -2431,7 +2425,7 @@ jobs:
       # ============================================================
 
       - name: Select output
-        if: ${{ inputs.operation == 'video' }}
+        if: ${{ inputs.operation == 'video' || inputs.operation == 'subtitle' }}
         run: |
 
           if [ -f output.mp4 ]; then
@@ -2452,7 +2446,7 @@ jobs:
       # ============================================================
 
       - name: Check final video
-        if: ${{ inputs.operation == 'video' }}
+        if: ${{ inputs.operation == 'video' || inputs.operation == 'subtitle' }}
         run: |
 
           if [ ! -f "${OUTPUT_FILE}" ]; then
@@ -2489,13 +2483,14 @@ jobs:
       # ============================================================
 
       - name: Send video result to Telegram
-        if: ${{ inputs.operation == 'video' }}
+        if: ${{ inputs.operation == 'video' || inputs.operation == 'subtitle' }}
         env:
           API_ID: ${{ secrets.API_ID }}
           API_HASH: ${{ secrets.API_HASH }}
           TG_SESSION: ${{ secrets.TG_SESSION }}
           CHAT_ID: ${{ inputs.chat_id }}
           OUTPUT_FILE: ${{ env.OUTPUT_FILE }}
+          OPERATION: ${{ inputs.operation }}
         run: |
 
           cat > send.py <<'PY'
@@ -2527,6 +2522,12 @@ jobs:
               ]
 
 
+              operation = os.environ.get(
+                  "OPERATION",
+                  "video"
+              )
+
+
               if not os.path.exists(
                   output_file
               ):
@@ -2555,12 +2556,26 @@ jobs:
               )
 
 
+              if operation == "subtitle":
+
+                  caption = (
+                      "📝 تم حرق الترجمة "
+                      "وتجهيز الفيلم بنجاح."
+                  )
+
+              else:
+
+                  caption = (
+                      "🎬 تم تجهيز الفيلم بنجاح."
+                  )
+
+
               await client.send_file(
                   int(
                       os.environ["CHAT_ID"]
                   ),
                   output_file,
-                  caption="🎬 تم تجهيز الفيلم بنجاح.",
+                  caption=caption,
                   video=True,
                   supports_streaming=True
               )
