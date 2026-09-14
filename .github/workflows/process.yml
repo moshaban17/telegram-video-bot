@@ -163,9 +163,12 @@ jobs:
 
           API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-          # FREE MODELS ONLY
-          PRIMARY_MODEL = "openai/gpt-oss-120b:free"
-          FALLBACK_MODEL = "deepseek/deepseek-chat-v3-0324:free"
+          # ========================================================
+          # CURRENT FREE MODELS
+          # ========================================================
+
+          PRIMARY_MODEL = "qwen/qwen3-30b-a3b:free"
+          FALLBACK_MODEL = "qwen/qwen3-14b:free"
 
           BATCH_SIZE = 60
           CONTEXT_LINES = 10
@@ -378,11 +381,7 @@ jobs:
 
                   "temperature": 0.1,
 
-                  "max_tokens": 12000,
-
-                  "reasoning": {
-                      "enabled": False
-                  }
+                  "max_tokens": 12000
               }
 
 
@@ -979,8 +978,6 @@ jobs:
                   translated_batch
               )
 
-
-              # Save progress after every batch.
 
               with open(
                   OUTPUT_FILE,
