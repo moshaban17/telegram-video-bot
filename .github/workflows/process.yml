@@ -86,7 +86,7 @@ jobs:
         if: ${{ inputs.operation == 'translate_srt' }}
         run: |
           python -m pip install --upgrade pip
-          pip install -U google-genai requests
+          pip install -U requests
 
       - name: Download SRT from Telegram
         if: ${{ inputs.operation == 'translate_srt' }}
@@ -139,10 +139,14 @@ jobs:
           PY
 
 
-      - name: Translate SRT with Gemini
+      # ============================================================
+      # OPENROUTER + QWEN SRT TRANSLATION
+      # ============================================================
+
+      - name: Translate SRT with OpenRouter
         if: ${{ inputs.operation == 'translate_srt' }}
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
 
           cat > translate_srt.py <<'PY'
@@ -150,22 +154,23 @@ jobs:
           import re
           import time
           import random
-
-          from google import genai
+          import requests
 
 
           INPUT_FILE = "input.srt"
           OUTPUT_FILE = "arabic.srt"
 
-          PRIMARY_MODEL = "gemini-3.8-flash"
-          FALLBACK_MODEL = "gemini-3.7-flash"
+          API_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+          PRIMARY_MODEL = "qwen/qwen3-235b-a22b-2507:free"
+          FALLBACK_MODEL = "qwen/qwen3-30b-a3b:free"
 
           BATCH_SIZE = 80
           CONTEXT_LINES = 10
 
           MIN_SPLIT_SIZE = 20
 
-          MAX_RETRIES_PER_MODEL = 3
+          MAX_RETRIES_PER_MODEL = 4
 
 
           PROMPT = r"""
@@ -291,79 +296,68 @@ jobs:
               return text.strip()
 
 
-          def is_retryable_error(exc):
-
-              code = getattr(
-                  exc,
-                  "code",
-                  None
-              )
-
-              status_code = getattr(
-                  exc,
-                  "status_code",
-                  None
-              )
+          def get_error_status(response):
 
               try:
-                  code = int(code)
+                  data = response.json()
               except Exception:
-                  pass
+                  data = {}
 
-              try:
-                  status_code = int(status_code)
-              except Exception:
-                  pass
+              error = data.get("error", {})
 
-              if code in (
-                  408,
-                  429,
-                  500,
-                  502,
-                  503,
-                  504
-              ):
-                  return True
+              if isinstance(error, dict):
+                  return (
+                      error.get("code")
+                      or response.status_code,
+                      error.get("message")
+                      or response.text
+                  )
 
-              if status_code in (
-                  408,
-                  429,
-                  500,
-                  502,
-                  503,
-                  504
-              ):
-                  return True
-
-              text = str(exc).upper()
-
-              retry_markers = (
-                  "408",
-                  "429",
-                  "500",
-                  "502",
-                  "503",
-                  "504",
-                  "UNAVAILABLE",
-                  "RESOURCE_EXHAUSTED",
-                  "INTERNAL",
-                  "TIMEOUT",
-                  "DEADLINE"
-              )
-
-              return any(
-                  marker in text
-                  for marker in retry_markers
+              return (
+                  response.status_code,
+                  response.text
               )
 
 
-          def call_gemini(
-              client,
+          def call_openrouter(
               model,
               prompt
           ):
 
+              api_key = os.environ.get(
+                  "OPENROUTER_API_KEY",
+                  ""
+              ).strip()
+
+              if not api_key:
+
+                  raise RuntimeError(
+                      "OPENROUTER_API_KEY is missing."
+                  )
+
+
+              headers = {
+                  "Authorization": f"Bearer {api_key}",
+                  "Content-Type": "application/json",
+                  "HTTP-Referer": "https://github.com/moshaban17/telegram-video-bot",
+                  "X-Title": "Telegram Video Bot SRT Translator"
+              }
+
+
+              payload = {
+                  "model": model,
+                  "messages": [
+                      {
+                          "role": "user",
+                          "content": prompt
+                      }
+                  ],
+                  "temperature": 0.2
+              }
+
+
               last_error = None
+
 
               for attempt in range(
                   1,
@@ -378,42 +372,99 @@ jobs:
                           f"{MAX_RETRIES_PER_MODEL}"
                       )
 
-                      response = (
-                          client.models.generate_content(
-                              model=model,
-                              contents=prompt
-                          )
+
+                      response = requests.post(
+                          API_URL,
+                          headers=headers,
+                          json=payload,
+                          timeout=300
                       )
 
-                      response_text = (
-                          getattr(
-                              response,
-                              "text",
-                              None
+
+                      if response.status_code == 200:
+
+                          data = response.json()
+
+                          choices = data.get(
+                              "choices",
+                              []
                           )
+
+                          if not choices:
+
+                              raise RuntimeError(
+                                  "OpenRouter returned no choices."
+                              )
+
+
+                          message = choices[0].get(
+                              "message",
+                              {}
+                          )
+
+                          content = message.get(
+                              "content"
+                          )
+
+
+                          if isinstance(
+                              content,
+                              list
+                          ):
+
+                              content = "".join(
+                                  item.get("text", "")
+                                  for item in content
+                                  if isinstance(item, dict)
+                              )
+
+
+                          if not content:
+
+                              raise RuntimeError(
+                                  "OpenRouter returned empty content."
+                              )
+
+
+                          return content
+
+
+                      code, message = get_error_status(
+                          response
                       )
 
-                      if not response_text:
 
-                          raise RuntimeError(
-                              "Gemini returned an empty response."
-                          )
+                      error_text = (
+                          f"HTTP {code}: {message}"
+                      )
 
-                      return response_text
+                      last_error = RuntimeError(
+                          error_text
+                      )
 
-                  except Exception as exc:
-
-                      last_error = exc
 
                       print(
-                          f"⚠️ Gemini error: {exc}"
+                          f"⚠️ OpenRouter error: "
+                          f"{error_text}"
                       )
 
-                      if not is_retryable_error(
-                          exc
-                      ):
 
-                          raise
+                      retryable = (
+                          response.status_code in (
+                              408,
+                              429,
+                              500,
+                              502,
+                              503,
+                              504
+                          )
+                      )
+
+
+                      if not retryable:
+
+                          raise last_error
+
 
                       if (
                           attempt
@@ -422,20 +473,39 @@ jobs:
 
                           break
 
+
                       wait_seconds = min(
                           60,
                           5 * (2 ** (attempt - 1))
                       )
+
+                      retry_after = response.headers.get(
+                          "Retry-After"
+                      )
+
+
+                      if retry_after:
+
+                          try:
+                              wait_seconds = min(
+                                  120,
+                                  float(retry_after)
+                              )
+                          except Exception:
+                              pass
+
 
                       jitter = random.uniform(
                           0,
                           3
                       )
 
+
                       total_wait = (
                           wait_seconds
                           + jitter
                       )
+
 
                       print(
                           f"⏳ Waiting "
@@ -443,9 +513,46 @@ jobs:
                           f"before retry..."
                       )
 
+
                       time.sleep(
                           total_wait
                       )
+
+
+                  except requests.RequestException as exc:
+
+                      last_error = exc
+
+                      print(
+                          f"⚠️ Network error: "
+                          f"{exc}"
+                      )
+
+
+                      if (
+                          attempt
+                          >= MAX_RETRIES_PER_MODEL
+                      ):
+
+                          break
+
+
+                      wait_seconds = min(
+                          60,
+                          5 * (2 ** (attempt - 1))
+                      )
+
+
+                      jitter = random.uniform(
+                          0,
+                          3
+                      )
+
+
+                      time.sleep(
+                          wait_seconds + jitter
+                      )
+
 
               raise last_error
 
@@ -463,6 +570,7 @@ jobs:
                       f"{len(translated)}"
                   )
 
+
               for old, new in zip(
                   original,
                   translated
@@ -476,6 +584,7 @@ jobs:
                       raise RuntimeError(
                           "Subtitle numbering changed."
                       )
+
 
                   if (
                       old["timing"]
@@ -505,7 +614,9 @@ jobs:
                   + CONTEXT_LINES
               )
 
+
               context_blocks = []
+
 
               for index in range(
                   context_start,
@@ -517,9 +628,12 @@ jobs:
                       <= index
                       < start_index + batch_length
                   ):
+
                       continue
 
+
                   item = all_subtitles[index]
+
 
                   context_blocks.append(
                       item["number"]
@@ -529,11 +643,13 @@ jobs:
                       + item["text"]
                   )
 
+
               if not context_blocks:
 
                   return (
                       "(لا يوجد سياق إضافي.)"
                   )
+
 
               return "\n\n".join(
                   context_blocks
@@ -541,7 +657,6 @@ jobs:
 
 
           def translate_once(
-              client,
               batch,
               model,
               all_subtitles,
@@ -579,13 +694,12 @@ jobs:
 
 
               print(
-                  "🚀 Sending batch to Gemini "
+                  "🚀 Sending batch to OpenRouter "
                   "with surrounding context..."
               )
 
 
-              response_text = call_gemini(
-                  client,
+              response_text = call_openrouter(
                   model,
                   prompt
               )
@@ -608,7 +722,6 @@ jobs:
 
 
           def translate_batch(
-              client,
               batch,
               all_subtitles,
               start_index
@@ -616,11 +729,13 @@ jobs:
 
               batch_size = len(batch)
 
+
               print("")
               print(
                   f"📦 Current batch size: "
                   f"{batch_size}"
               )
+
 
               print(
                   f"🧠 Context: up to "
@@ -636,19 +751,21 @@ jobs:
               try:
 
                   translated = translate_once(
-                      client,
                       batch,
                       PRIMARY_MODEL,
                       all_subtitles,
                       start_index
                   )
 
+
                   print(
                       f"✅ Batch translated with "
                       f"{PRIMARY_MODEL}"
                   )
 
+
                   return translated
+
 
               except Exception as primary_error:
 
@@ -672,20 +789,23 @@ jobs:
                       f"{FALLBACK_MODEL}..."
                   )
 
+
                   translated = translate_once(
-                      client,
                       batch,
                       FALLBACK_MODEL,
                       all_subtitles,
                       start_index
                   )
 
+
                   print(
                       f"✅ Batch translated with "
                       f"{FALLBACK_MODEL}"
                   )
 
+
                   return translated
+
 
               except Exception as fallback_error:
 
@@ -705,13 +825,14 @@ jobs:
               if batch_size <= MIN_SPLIT_SIZE:
 
                   raise RuntimeError(
-                      f"Both Gemini models failed "
+                      f"Both OpenRouter models failed "
                       f"for a batch of {batch_size} "
                       f"subtitles."
                   )
 
 
               midpoint = batch_size // 2
+
 
               left_batch = batch[:midpoint]
               right_batch = batch[midpoint:]
@@ -721,6 +842,7 @@ jobs:
               print(
                   "🔀 Both models failed."
               )
+
 
               print(
                   f"↪️ Splitting batch "
@@ -732,7 +854,6 @@ jobs:
 
 
               left_result = translate_batch(
-                  client,
                   left_batch,
                   all_subtitles,
                   start_index
@@ -740,10 +861,10 @@ jobs:
 
 
               right_result = translate_batch(
-                  client,
                   right_batch,
                   all_subtitles,
-                  start_index + len(left_batch)
+                  start_index
+                  + len(left_batch)
               )
 
 
@@ -784,11 +905,14 @@ jobs:
           )
 
 
-          client = genai.Client(
-              api_key=os.environ[
-                  "GEMINI_API_KEY"
-              ]
-          )
+          if not os.environ.get(
+              "OPENROUTER_API_KEY",
+              ""
+          ).strip():
+
+              raise RuntimeError(
+                  "OPENROUTER_API_KEY secret is not configured."
+              )
 
 
           translated_all = []
@@ -815,11 +939,13 @@ jobs:
                   "========================================"
               )
 
+
               print(
                   f"🌐 Translating subtitles "
                   f"{start + 1}-{end} "
                   f"of {len(subtitles)}"
               )
+
 
               print(
                   "========================================"
@@ -833,7 +959,6 @@ jobs:
 
               translated_batch = (
                   translate_batch(
-                      client,
                       batch,
                       subtitles,
                       start
@@ -853,6 +978,7 @@ jobs:
 
 
               # Save progress after EVERY batch.
+
               with open(
                   OUTPUT_FILE,
                   "w",
@@ -907,6 +1033,7 @@ jobs:
                       "Final subtitle numbering changed."
                   )
 
+
               if (
                   original["timing"]
                   != translated["timing"]
@@ -935,19 +1062,23 @@ jobs:
               "========================================"
           )
 
+
           print(
               f"✅ Translation completed: "
               f"{len(translated_all)} subtitles"
           )
 
+
           print(
               f"📄 Output: {OUTPUT_FILE}"
           )
+
 
           print(
               "========================================"
           )
           PY
+
 
           python translate_srt.py
 
@@ -1551,7 +1682,6 @@ jobs:
                       "compression_ratio",
                       0.0
                   )
-              )
 
 
               if no_speech_prob > 0.97:
@@ -2147,9 +2277,6 @@ jobs:
 
       - name: Send OCR SRT to Telegram
         if: ${{ inputs.operation == 'video_ocr' }}
-        env:
-          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          CHAT_ID: ${{ inputs.chat_id }}
         run: |
 
           curl -sS \
@@ -2437,6 +2564,7 @@ jobs:
               print(
                   "📤 Starting Telegram upload..."
               )
+
 
               print(
                   f"📦 File size: "
