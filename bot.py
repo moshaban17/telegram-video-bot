@@ -46,6 +46,9 @@ def main_menu():
             InlineKeyboardButton("🔗 ملف → رابط", callback_data="file_link"),
             InlineKeyboardButton("🌐 ترجمة SRT", callback_data="translate_srt"),
         ],
+        [
+            InlineKeyboardButton("🏠 القائمة الرئيسية", callback_data="main_menu"),
+        ],
     ]
 
     return InlineKeyboardMarkup(keyboard)
@@ -135,6 +138,18 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mode = query.data
 
     # -------------------------
+    # MAIN MENU
+    # -------------------------
+    if mode == "main_menu":
+        context.user_data.clear()
+
+        await query.message.reply_text(
+            "🎬 اختر الوظيفة المطلوبة:",
+            reply_markup=main_menu(),
+        )
+        return
+
+    # -------------------------
     # DOWNLOAD
     # -------------------------
     if mode == "download":
@@ -144,22 +159,24 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text(
             "🔗 ابعت رابط الفيلم المباشر أو ابعت الفيلم هنا."
         )
+        return
 
     # -------------------------
     # CONVERT
     # -------------------------
-    elif mode == "convert":
+    if mode == "convert":
         context.user_data.clear()
         context.user_data["mode"] = "convert"
 
         await query.message.reply_text(
             "🎬 ابعت الفيلم كفيديو/ملف أو ابعت الرابط المباشر."
         )
+        return
 
     # -------------------------
     # SUBTITLE
     # -------------------------
-    elif mode == "subtitle":
+    if mode == "subtitle":
         context.user_data.clear()
         context.user_data["mode"] = "subtitle"
 
@@ -168,22 +185,24 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "1️⃣ ابعت الفيلم كفيديو أو ملف.\n"
             "2️⃣ بعده ابعت ملف الترجمة SRT أو ASS."
         )
+        return
 
     # -------------------------
     # SPEECH
     # -------------------------
-    elif mode == "speech":
+    if mode == "speech":
         context.user_data.clear()
         context.user_data["mode"] = "speech"
 
         await query.message.reply_text(
             "🎙️ ابعت الفيديو أو ملف الصوت، أو ابعت رابط مباشر."
         )
+        return
 
     # -------------------------
     # OCR
     # -------------------------
-    elif mode == "ocr":
+    if mode == "ocr":
         context.user_data.clear()
         context.user_data["mode"] = "ocr"
 
@@ -209,40 +228,50 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "👁️ اختر لغة الكلام الظاهر على الشاشة:",
             reply_markup=InlineKeyboardMarkup(keyboard),
         )
+        return
 
     # -------------------------
     # TRANSLATE SRT
     # -------------------------
-    elif mode == "translate_srt":
+    if mode == "translate_srt":
         context.user_data.clear()
         context.user_data["mode"] = "translate_srt"
 
         await query.message.reply_text(
             "🌐 ابعت ملف SRT."
         )
+        return
 
     # -------------------------
     # PLACEHOLDERS
     # -------------------------
-    elif mode == "audio":
+    if mode == "audio":
         await query.message.reply_text(
-            "🔊 وظيفة إدارة الصوت هتتضاف في الخطوة القادمة."
+            "🔊 وظيفة إدارة الصوت هتتضاف في الخطوة القادمة.",
+            reply_markup=main_menu(),
         )
+        return
 
-    elif mode == "extract":
+    if mode == "extract":
         await query.message.reply_text(
-            "📦 وظيفة استخراج الترجمة هتتضاف في الخطوة القادمة."
+            "📦 وظيفة استخراج الترجمة هتتضاف في الخطوة القادمة.",
+            reply_markup=main_menu(),
         )
+        return
 
-    elif mode == "watermark":
+    if mode == "watermark":
         await query.message.reply_text(
-            "🖼️ وظيفة الـ Watermark هتتضاف في الخطوة القادمة."
+            "🖼️ وظيفة الـ Watermark هتتضاف في الخطوة القادمة.",
+            reply_markup=main_menu(),
         )
+        return
 
-    elif mode == "file_link":
+    if mode == "file_link":
         await query.message.reply_text(
-            "🔗 وظيفة ملف → رابط هتتضاف في الخطوة القادمة."
+            "🔗 وظيفة ملف → رابط هتتضاف في الخطوة القادمة.",
+            reply_markup=main_menu(),
         )
+        return
 
 
 # =========================
@@ -284,7 +313,7 @@ async def receive_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # =========================
 
     if mode == "subtitle":
-        # لو المستخدم بعت رابط فيديو
+
         if not context.user_data.get("video_received"):
             context.user_data["video_url"] = text
             context.user_data["source_type"] = "url"
@@ -310,13 +339,11 @@ async def receive_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif mode == "speech":
             operation = "audio_srt"
 
-        resolution = "same"
-
         response = github_dispatch(
             chat_id=update.effective_chat.id,
             operation=operation,
             video_url=text,
-            resolution=resolution,
+            resolution="same",
             source_type="url",
         )
 
@@ -334,7 +361,8 @@ async def receive_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     await update.message.reply_text(
-        "⚠️ ابعت الملف المطلوب لهذه الوظيفة."
+        "⚠️ ابعت الملف المطلوب لهذه الوظيفة.",
+        reply_markup=main_menu(),
     )
 
 
@@ -384,12 +412,6 @@ async def receive_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif mode == "speech":
         operation = "audio_srt"
 
-    elif mode == "download":
-        operation = "video"
-
-    elif mode == "convert":
-        operation = "video"
-
     response = github_dispatch(
         chat_id=chat_id,
         operation=operation,
@@ -438,7 +460,6 @@ async def receive_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if mode == "subtitle":
 
-        # فيلم كملف
         video_extensions = (
             ".mp4",
             ".mkv",
@@ -480,7 +501,7 @@ async def receive_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await show_subtitle_settings(update, context)
             return
 
-        # ASS
+        # ASS / SSA
         if lower_name.endswith(".ass") or lower_name.endswith(".ssa"):
 
             if not context.user_data.get("video_received"):
@@ -636,28 +657,67 @@ async def receive_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # SUBTITLE SETTINGS
 # =========================
 
-async def show_subtitle_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def show_subtitle_settings(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
 
     keyboard = [
         [
-            InlineKeyboardButton("🔤 Noto Sans", callback_data="font_noto"),
-            InlineKeyboardButton("🔤 Arial", callback_data="font_arial"),
+            InlineKeyboardButton(
+                "🔤 Noto Sans",
+                callback_data="font_noto",
+            ),
+            InlineKeyboardButton(
+                "🔤 Arial",
+                callback_data="font_arial",
+            ),
         ],
         [
-            InlineKeyboardButton("📏 صغير", callback_data="size_24"),
-            InlineKeyboardButton("📏 متوسط", callback_data="size_28"),
-            InlineKeyboardButton("📏 كبير", callback_data="size_32"),
+            InlineKeyboardButton(
+                "📏 صغير",
+                callback_data="size_24",
+            ),
+            InlineKeyboardButton(
+                "📏 متوسط",
+                callback_data="size_28",
+            ),
+            InlineKeyboardButton(
+                "📏 كبير",
+                callback_data="size_32",
+            ),
         ],
         [
-            InlineKeyboardButton("⚪ أبيض", callback_data="color_white"),
-            InlineKeyboardButton("🟡 أصفر", callback_data="color_yellow"),
+            InlineKeyboardButton(
+                "⚪ أبيض",
+                callback_data="color_white",
+            ),
+            InlineKeyboardButton(
+                "🟡 أصفر",
+                callback_data="color_yellow",
+            ),
         ],
         [
-            InlineKeyboardButton("⬛ صندوق أسود", callback_data="box_on"),
-            InlineKeyboardButton("🚫 بدون صندوق", callback_data="box_off"),
+            InlineKeyboardButton(
+                "⬛ صندوق أسود",
+                callback_data="box_on",
+            ),
+            InlineKeyboardButton(
+                "🚫 بدون صندوق",
+                callback_data="box_off",
+            ),
         ],
         [
-            InlineKeyboardButton("▶️ حرق الترجمة", callback_data="subtitle_start"),
+            InlineKeyboardButton(
+                "▶️ حرق الترجمة",
+                callback_data="subtitle_start",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "🏠 القائمة الرئيسية",
+                callback_data="main_menu",
+            ),
         ],
     ]
 
@@ -673,7 +733,10 @@ async def show_subtitle_settings(update: Update, context: ContextTypes.DEFAULT_T
     )
 
 
-async def show_ass_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def show_ass_settings(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
 
     keyboard = [
         [
@@ -681,7 +744,13 @@ async def show_ass_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "▶️ استخدام ASS كما هو",
                 callback_data="subtitle_start",
             )
-        ]
+        ],
+        [
+            InlineKeyboardButton(
+                "🏠 القائمة الرئيسية",
+                callback_data="main_menu",
+            )
+        ],
     ]
 
     await update.message.reply_text(
@@ -696,7 +765,10 @@ async def show_ass_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # SUBTITLE SETTINGS BUTTONS
 # =========================
 
-async def subtitle_settings_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def subtitle_settings_button(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
 
     query = update.callback_query
     await query.answer()
@@ -710,7 +782,10 @@ async def subtitle_settings_button(update: Update, context: ContextTypes.DEFAULT
         context.user_data["font_name"] = "Arial"
 
     elif data.startswith("size_"):
-        context.user_data["font_size"] = data.replace("size_", "")
+        context.user_data["font_size"] = data.replace(
+            "size_",
+            "",
+        )
 
     elif data == "color_white":
         context.user_data["font_color"] = "white"
@@ -740,33 +815,48 @@ async def subtitle_settings_button(update: Update, context: ContextTypes.DEFAULT
 
         response = github_dispatch(
             chat_id=update.effective_chat.id,
-            operation="video",
+
+            # مهم:
+            # دي لازم تكون subtitle وليس video
+            operation="subtitle",
+
             resolution="same",
-            srt_file_id=context.user_data.get("srt_file_id", ""),
+
+            srt_file_id=context.user_data.get(
+                "srt_file_id",
+                "",
+            ),
+
             telegram_message_id=context.user_data.get(
                 "telegram_message_id",
                 "",
             ),
+
             source_type=context.user_data.get(
                 "source_type",
                 "telegram",
             ),
+
             subtitle_type=context.user_data.get(
                 "subtitle_type",
                 "srt",
             ),
+
             font_name=context.user_data.get(
                 "font_name",
                 "Noto Sans",
             ),
+
             font_size=context.user_data.get(
                 "font_size",
                 "28",
             ),
+
             font_color=context.user_data.get(
                 "font_color",
                 "white",
             ),
+
             subtitle_box=context.user_data.get(
                 "subtitle_box",
                 "off",
@@ -810,7 +900,12 @@ def main():
 
     app = Application.builder().token(BOT_TOKEN).build()
 
-    app.add_handler(CommandHandler("start", start))
+    app.add_handler(
+        CommandHandler(
+            "start",
+            start,
+        )
+    )
 
     app.add_handler(
         CallbackQueryHandler(
