@@ -348,14 +348,19 @@ async def receive_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         if response.status_code == 204:
+            context.user_data.clear()
+
             await update.message.reply_text(
                 "✅ تم إرسال المهمة إلى GitHub Actions.\n"
-                "⏳ جاري المعالجة..."
+                "⏳ جاري المعالجة...\n\n"
+                "🎬 اختر وظيفة أخرى:",
+                reply_markup=main_menu(),
             )
         else:
             await update.message.reply_text(
                 "❌ حصل خطأ أثناء تشغيل المهمة.\n\n"
-                f"{response.text[:1000]}"
+                f"{response.text[:1000]}",
+                reply_markup=main_menu(),
             )
 
         return
@@ -421,14 +426,19 @@ async def receive_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     if response.status_code == 204:
+        context.user_data.clear()
+
         await update.message.reply_text(
             "✅ تم استلام الفيلم.\n"
-            "⏳ جاري بدء المعالجة..."
+            "⏳ جاري بدء المعالجة...\n\n"
+            "🎬 اختر وظيفة أخرى:",
+            reply_markup=main_menu(),
         )
     else:
         await update.message.reply_text(
             "❌ حصل خطأ أثناء تشغيل المهمة.\n\n"
-            f"{response.text[:1000]}"
+            f"{response.text[:1000]}",
+            reply_markup=main_menu(),
         )
 
 
@@ -519,7 +529,8 @@ async def receive_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(
             "⚠️ الملف غير مدعوم.\n"
-            "ابعت SRT أو ASS."
+            "ابعت SRT أو ASS.",
+            reply_markup=main_menu(),
         )
 
         return
@@ -532,7 +543,8 @@ async def receive_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if not lower_name.endswith(".srt"):
             await update.message.reply_text(
-                "⚠️ لازم تبعت ملف SRT."
+                "⚠️ لازم تبعت ملف SRT.",
+                reply_markup=main_menu(),
             )
             return
 
@@ -544,14 +556,19 @@ async def receive_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         if response.status_code == 204:
+            context.user_data.clear()
+
             await update.message.reply_text(
                 "🌐 تم استلام ملف SRT.\n"
-                "⏳ جاري ترجمته..."
+                "⏳ جاري ترجمته...\n\n"
+                "🎬 اختر وظيفة أخرى:",
+                reply_markup=main_menu(),
             )
         else:
             await update.message.reply_text(
                 "❌ حصل خطأ أثناء تشغيل الترجمة.\n\n"
-                f"{response.text[:1000]}"
+                f"{response.text[:1000]}",
+                reply_markup=main_menu(),
             )
 
         return
@@ -578,7 +595,8 @@ async def receive_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if not lower_name.endswith(audio_extensions):
             await update.message.reply_text(
-                "⚠️ الملف غير مدعوم."
+                "⚠️ الملف غير مدعوم.",
+                reply_markup=main_menu(),
             )
             return
 
@@ -590,14 +608,19 @@ async def receive_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         if response.status_code == 204:
+            context.user_data.clear()
+
             await update.message.reply_text(
                 "🎙️ تم استلام الملف.\n"
-                "⏳ جاري استخراج الكلام إلى SRT..."
+                "⏳ جاري استخراج الكلام إلى SRT...\n\n"
+                "🎬 اختر وظيفة أخرى:",
+                reply_markup=main_menu(),
             )
         else:
             await update.message.reply_text(
                 "❌ حصل خطأ أثناء تشغيل المهمة.\n\n"
-                f"{response.text[:1000]}"
+                f"{response.text[:1000]}",
+                reply_markup=main_menu(),
             )
 
         return
@@ -622,7 +645,8 @@ async def receive_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if not lower_name.endswith(video_extensions):
             await update.message.reply_text(
-                "⚠️ الملف غير مدعوم."
+                "⚠️ الملف غير مدعوم.",
+                reply_markup=main_menu(),
             )
             return
 
@@ -640,14 +664,19 @@ async def receive_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         if response.status_code == 204:
+            context.user_data.clear()
+
             await update.message.reply_text(
                 "✅ تم استلام الفيلم.\n"
-                "⏳ جاري المعالجة..."
+                "⏳ جاري المعالجة...\n\n"
+                "🎬 اختر وظيفة أخرى:",
+                reply_markup=main_menu(),
             )
         else:
             await update.message.reply_text(
                 "❌ حصل خطأ أثناء تشغيل المهمة.\n\n"
-                f"{response.text[:1000]}"
+                f"{response.text[:1000]}",
+                reply_markup=main_menu(),
             )
 
         return
@@ -803,60 +832,50 @@ async def subtitle_settings_button(
 
         if not context.user_data.get("video_received"):
             await query.message.reply_text(
-                "⚠️ الفيلم غير موجود."
+                "⚠️ الفيلم غير موجود.",
+                reply_markup=main_menu(),
             )
             return
 
         if not context.user_data.get("subtitle_received"):
             await query.message.reply_text(
-                "⚠️ ملف الترجمة غير موجود."
+                "⚠️ ملف الترجمة غير موجود.",
+                reply_markup=main_menu(),
             )
             return
 
         response = github_dispatch(
             chat_id=update.effective_chat.id,
-
-            # مهم:
-            # دي لازم تكون subtitle وليس video
             operation="subtitle",
-
             resolution="same",
-
             srt_file_id=context.user_data.get(
                 "srt_file_id",
                 "",
             ),
-
             telegram_message_id=context.user_data.get(
                 "telegram_message_id",
                 "",
             ),
-
             source_type=context.user_data.get(
                 "source_type",
                 "telegram",
             ),
-
             subtitle_type=context.user_data.get(
                 "subtitle_type",
                 "srt",
             ),
-
             font_name=context.user_data.get(
                 "font_name",
                 "Noto Sans",
             ),
-
             font_size=context.user_data.get(
                 "font_size",
                 "28",
             ),
-
             font_color=context.user_data.get(
                 "font_color",
                 "white",
             ),
-
             subtitle_box=context.user_data.get(
                 "subtitle_box",
                 "off",
@@ -865,22 +884,26 @@ async def subtitle_settings_button(
 
         if response.status_code == 204:
 
+            context.user_data.clear()
+
             await query.message.reply_text(
                 "🔥 تم إرسال مهمة حرق الترجمة.\n"
-                "⏳ جاري تجهيز الفيلم..."
+                "⏳ جاري تجهيز الفيلم...\n\n"
+                "🎬 اختر وظيفة أخرى:",
+                reply_markup=main_menu(),
             )
-
-            context.user_data.clear()
 
         else:
 
             await query.message.reply_text(
                 "❌ حصل خطأ أثناء تشغيل المهمة.\n\n"
-                f"{response.text[:1000]}"
+                f"{response.text[:1000]}",
+                reply_markup=main_menu(),
             )
 
         return
 
+    # عند تغيير إعداد فقط، نبقي المستخدم داخل إعدادات الترجمة
     await query.message.reply_text(
         "✅ تم حفظ الإعداد."
     )
