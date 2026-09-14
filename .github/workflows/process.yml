@@ -76,6 +76,8 @@ jobs:
   process:
     runs-on: ubuntu-latest
 
+    timeout-minutes: 360
+
     steps:
 
       # ============================================================
@@ -94,7 +96,6 @@ jobs:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           SRT_FILE_ID: ${{ inputs.srt_file_id }}
         run: |
-
           python - <<'PY'
           import os
           import requests
@@ -140,7 +141,7 @@ jobs:
 
 
       # ============================================================
-      # OPENROUTER + QWEN SRT TRANSLATION
+      # OPENROUTER SRT TRANSLATION
       # ============================================================
 
       - name: Translate SRT with OpenRouter
@@ -162,29 +163,30 @@ jobs:
 
           API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-          PRIMARY_MODEL = "qwen/qwen3-235b-a22b-2507:free"
-          FALLBACK_MODEL = "qwen/qwen3-30b-a3b:free"
+          # FREE MODELS ONLY
+          PRIMARY_MODEL = "openai/gpt-oss-120b:free"
+          FALLBACK_MODEL = "deepseek/deepseek-chat-v3-0324:free"
 
-          BATCH_SIZE = 80
+          BATCH_SIZE = 60
           CONTEXT_LINES = 10
 
-          MIN_SPLIT_SIZE = 20
+          MIN_SPLIT_SIZE = 15
 
-          MAX_RETRIES_PER_MODEL = 4
+          MAX_RETRIES_PER_MODEL = 3
 
 
           PROMPT = r"""
-          أنت مترجم محترف لترجمة الأفلام والمسلسلات إلى العربية الفصحى.
+          أنت مترجم محترف لترجمة الأفلام والمسلسلات إلى العربية الفصحى الحديثة.
 
-          ترجم الحوار إلى عربية فصحى طبيعية وسينمائية.
+          مهمتك ترجمة نصوص SRT إلى عربية فصحى طبيعية وسينمائية.
 
-          القواعد:
+          القواعد الصارمة:
 
           1. افهم السياق قبل الترجمة.
           2. ترجم المعنى المقصود بدقة وبأسلوب عربي فصيح طبيعي.
-          3. لا تترجم التعبيرات الاصطلاحية حرفيًا إذا أدى ذلك إلى معنى غير طبيعي.
+          3. لا تترجم التعبيرات الاصطلاحية حرفيًا إذا أدى ذلك إلى معنى غريب.
           4. راعِ جنس المتحدث والمخاطَب.
-          5. حافظ على أسماء الشخصيات والمصطلحات.
+          5. حافظ على أسماء الشخصيات والأماكن والمصطلحات.
           6. حافظ على مستوى الشتائم والإهانات الموجود في الأصل.
           7. لا تحذف أي حوار.
           8. لا تضف أي حوار.
@@ -192,15 +194,20 @@ jobs:
           10. لا تغير التوقيتات.
           11. لا تغير ترتيب المقاطع.
           12. لا تغير عدد المقاطع.
-          13. حافظ على جميع HTML tags كما هي تمامًا.
-          14. إذا وجدت <font color="..."><i> أو أي tag مشابه، اترك الكود كما هو وترجم النص الموجود داخله فقط.
+          13. حافظ على جميع HTML/style tags كما هي تمامًا.
+          14. إذا وجدت:
+              <font color="...">
+              <i>
+              </i>
+              </font>
+              أو أي tags مشابهة، اترك الكود كما هو وترجم النص داخله فقط.
           15. حافظ على رموز ♪ و ♫ كما هي.
           16. إذا تكرر سطر أغنية في المصدر، يجب أن يتكرر في الترجمة.
           17. استخدم العربية الفصحى وليس العامية.
           18. استخدم "إله" حسب السياق بدل استبداله تلقائيًا بـ"الله".
-          19. Hey man = يا رجل.
-          20. Hey + name = يا [الاسم].
-          21. Wow = يا للروعة.
+          19. "hey man" = "يا رجل" حسب السياق.
+          20. "hey + name" = "يا [الاسم]".
+          21. "wow" = "يا للروعة" حسب السياق.
           22. استخدم "أيها" و"أيتها" عندما يكون ذلك مناسبًا للسياق.
           23. لا تخلط بين المذكر والمؤنث.
           24. لا تضف شرحًا أو ملاحظات.
@@ -214,12 +221,11 @@ jobs:
           - سيتم تزويدك بمقاطع سابقة ولاحقة للمقاطع المطلوب ترجمتها.
           - مقاطع السياق موجودة للفهم فقط ولا يجب ترجمتها أو وضعها في الناتج.
           - استخدم الحوار السابق واللاحق لمعرفة من يتحدث مع من.
-          - إذا كان جنس المخاطَب واضحًا من المقاطع السابقة، حافظ عليه في المقاطع الحالية.
-          - إذا كان السطر الحالي يحتمل المذكر والمؤنث، استخدم السياق لتحديد الصيغة الصحيحة.
-          - إذا كان المتحدث يتحدث مع امرأة في المقاطع السابقة، لا تحوّل المخاطبة إلى المذكر بلا سبب.
-          - وإذا كان يتحدث مع رجل، لا تحوّل المخاطبة إلى المؤنث بلا سبب.
+          - إذا كان جنس المخاطَب واضحًا من السياق، حافظ عليه.
           - حافظ على اتساق جنس المخاطَب عبر المشهد.
           - لا تعتبر كل سطر منفصلًا عن الحوار المحيط به.
+
+          الناتج يجب أن يكون SRT فقط، دون Markdown أو شرح.
           """
 
 
@@ -278,6 +284,13 @@ jobs:
 
               text = text.strip()
 
+              text = re.sub(
+                  r"<think>.*?</think>",
+                  "",
+                  text,
+                  flags=re.DOTALL | re.IGNORECASE
+              )
+
               if text.startswith("```"):
 
                   lines = text.splitlines()
@@ -306,11 +319,16 @@ jobs:
               error = data.get("error", {})
 
               if isinstance(error, dict):
+
                   return (
-                      error.get("code")
-                      or response.status_code,
-                      error.get("message")
-                      or response.text
+                      error.get(
+                          "code",
+                          response.status_code
+                      ),
+                      error.get(
+                          "message",
+                          response.text
+                      )
                   )
 
               return (
@@ -346,13 +364,25 @@ jobs:
 
               payload = {
                   "model": model,
+
                   "messages": [
+                      {
+                          "role": "system",
+                          "content": PROMPT
+                      },
                       {
                           "role": "user",
                           "content": prompt
                       }
                   ],
-                  "temperature": 0.2
+
+                  "temperature": 0.1,
+
+                  "max_tokens": 12000,
+
+                  "reasoning": {
+                      "enabled": False
+                  }
               }
 
 
@@ -402,6 +432,7 @@ jobs:
                               {}
                           )
 
+
                           content = message.get(
                               "content"
                           )
@@ -434,18 +465,14 @@ jobs:
                       )
 
 
-                      error_text = (
-                          f"HTTP {code}: {message}"
-                      )
-
                       last_error = RuntimeError(
-                          error_text
+                          f"HTTP {code}: {message}"
                       )
 
 
                       print(
                           f"⚠️ OpenRouter error: "
-                          f"{error_text}"
+                          f"{last_error}"
                       )
 
 
@@ -462,7 +489,6 @@ jobs:
 
 
                       if not retryable:
-
                           raise last_error
 
 
@@ -470,7 +496,6 @@ jobs:
                           attempt
                           >= MAX_RETRIES_PER_MODEL
                       ):
-
                           break
 
 
@@ -478,6 +503,7 @@ jobs:
                           60,
                           5 * (2 ** (attempt - 1))
                       )
+
 
                       retry_after = response.headers.get(
                           "Retry-After"
@@ -487,35 +513,30 @@ jobs:
                       if retry_after:
 
                           try:
+
                               wait_seconds = min(
                                   120,
                                   float(retry_after)
                               )
+
                           except Exception:
                               pass
 
 
-                      jitter = random.uniform(
+                      wait_seconds += random.uniform(
                           0,
                           3
                       )
 
 
-                      total_wait = (
-                          wait_seconds
-                          + jitter
-                      )
-
-
                       print(
                           f"⏳ Waiting "
-                          f"{total_wait:.1f} seconds "
-                          f"before retry..."
+                          f"{wait_seconds:.1f} seconds..."
                       )
 
 
                       time.sleep(
-                          total_wait
+                          wait_seconds
                       )
 
 
@@ -524,8 +545,7 @@ jobs:
                       last_error = exc
 
                       print(
-                          f"⚠️ Network error: "
-                          f"{exc}"
+                          f"⚠️ Network error: {exc}"
                       )
 
 
@@ -533,7 +553,6 @@ jobs:
                           attempt
                           >= MAX_RETRIES_PER_MODEL
                       ):
-
                           break
 
 
@@ -543,14 +562,9 @@ jobs:
                       )
 
 
-                      jitter = random.uniform(
-                          0,
-                          3
-                      )
-
-
                       time.sleep(
-                          wait_seconds + jitter
+                          wait_seconds
+                          + random.uniform(0, 3)
                       )
 
 
@@ -593,6 +607,45 @@ jobs:
 
                       raise RuntimeError(
                           "Subtitle timing changed."
+                      )
+
+
+                  if not new["text"].strip():
+
+                      raise RuntimeError(
+                          "Translated subtitle is empty."
+                      )
+
+
+                  for symbol in ("♪", "♫"):
+
+                      if (
+                          old["text"].count(symbol)
+                          != new["text"].count(symbol)
+                      ):
+
+                          raise RuntimeError(
+                              f"Music symbol {symbol} "
+                              f"was changed."
+                          )
+
+
+                  old_tags = re.findall(
+                      r"<[^>]+>",
+                      old["text"]
+                  )
+
+
+                  new_tags = re.findall(
+                      r"<[^>]+>",
+                      new["text"]
+                  )
+
+
+                  if old_tags != new_tags:
+
+                      raise RuntimeError(
+                          "HTML/style tags were changed."
                       )
 
 
@@ -646,9 +699,7 @@ jobs:
 
               if not context_blocks:
 
-                  return (
-                      "(لا يوجد سياق إضافي.)"
-                  )
+                  return "(لا يوجد سياق إضافي.)"
 
 
               return "\n\n".join(
@@ -676,26 +727,15 @@ jobs:
 
 
               prompt = (
-                  PROMPT
-                  + "\n\n"
-                  + "==================================================\n"
-                  + "السياق المحيط — للفهم فقط ولا تترجمه:\n"
-                  + "==================================================\n\n"
+                  "السياق المحيط التالي للفهم فقط. "
+                  "لا تترجمه ولا تضعه في الناتج:\n\n"
+                  "================ CONTEXT ================\n"
                   + context
                   + "\n\n"
-                  + "==================================================\n"
-                  + "المقاطع المطلوب ترجمتها فقط:\n"
-                  + "==================================================\n\n"
+                  "================ TRANSLATE ONLY ================\n"
                   + source
                   + "\n\n"
-                  + "أعد المقاطع المطلوب ترجمتها فقط. "
-                  + "لا تضع مقاطع السياق في الناتج."
-              )
-
-
-              print(
-                  "🚀 Sending batch to OpenRouter "
-                  "with surrounding context..."
+                  "أعد المقاطع الموجودة تحت TRANSLATE ONLY فقط."
               )
 
 
@@ -727,26 +767,10 @@ jobs:
               start_index
           ):
 
-              batch_size = len(batch)
-
-
-              print("")
               print(
-                  f"📦 Current batch size: "
-                  f"{batch_size}"
+                  f"📦 Batch size: {len(batch)}"
               )
 
-
-              print(
-                  f"🧠 Context: up to "
-                  f"{CONTEXT_LINES} subtitles "
-                  f"before and after"
-              )
-
-
-              # ------------------------------------------------
-              # Primary model
-              # ------------------------------------------------
 
               try:
 
@@ -759,8 +783,7 @@ jobs:
 
 
                   print(
-                      f"✅ Batch translated with "
-                      f"{PRIMARY_MODEL}"
+                      f"✅ Success: {PRIMARY_MODEL}"
                   )
 
 
@@ -778,15 +801,11 @@ jobs:
                   )
 
 
-              # ------------------------------------------------
-              # Fallback model
-              # ------------------------------------------------
-
               try:
 
                   print(
-                      f"🔄 Switching to "
-                      f"{FALLBACK_MODEL}..."
+                      f"🔄 Trying fallback: "
+                      f"{FALLBACK_MODEL}"
                   )
 
 
@@ -799,8 +818,7 @@ jobs:
 
 
                   print(
-                      f"✅ Batch translated with "
-                      f"{FALLBACK_MODEL}"
+                      f"✅ Success: {FALLBACK_MODEL}"
                   )
 
 
@@ -818,36 +836,24 @@ jobs:
                   )
 
 
-              # ------------------------------------------------
-              # Split failed batch
-              # ------------------------------------------------
-
-              if batch_size <= MIN_SPLIT_SIZE:
+              if len(batch) <= MIN_SPLIT_SIZE:
 
                   raise RuntimeError(
-                      f"Both OpenRouter models failed "
-                      f"for a batch of {batch_size} "
-                      f"subtitles."
+                      f"Both free models failed "
+                      f"for batch of {len(batch)} subtitles."
                   )
 
 
-              midpoint = batch_size // 2
+              midpoint = len(batch) // 2
 
 
               left_batch = batch[:midpoint]
               right_batch = batch[midpoint:]
 
 
-              print("")
               print(
-                  "🔀 Both models failed."
-              )
-
-
-              print(
-                  f"↪️ Splitting batch "
-                  f"{batch_size} "
-                  f"into "
+                  f"🔀 Splitting failed batch "
+                  f"{len(batch)} -> "
                   f"{len(left_batch)} + "
                   f"{len(right_batch)}"
               )
@@ -863,8 +869,7 @@ jobs:
               right_result = translate_batch(
                   right_batch,
                   all_subtitles,
-                  start_index
-                  + len(left_batch)
+                  start_index + len(left_batch)
               )
 
 
@@ -911,7 +916,7 @@ jobs:
           ).strip():
 
               raise RuntimeError(
-                  "OPENROUTER_API_KEY secret is not configured."
+                  "OPENROUTER_API_KEY secret is missing."
               )
 
 
@@ -957,12 +962,10 @@ jobs:
               ]
 
 
-              translated_batch = (
-                  translate_batch(
-                      batch,
-                      subtitles,
-                      start
-                  )
+              translated_batch = translate_batch(
+                  batch,
+                  subtitles,
+                  start
               )
 
 
@@ -977,7 +980,7 @@ jobs:
               )
 
 
-              # Save progress after EVERY batch.
+              # Save progress after every batch.
 
               with open(
                   OUTPUT_FILE,
@@ -993,55 +996,25 @@ jobs:
 
 
               print(
-                  f"💾 Saved progress: "
-                  f"{len(translated_all)} "
-                  f"subtitles"
+                  f"💾 Progress saved: "
+                  f"{len(translated_all)}/"
+                  f"{len(subtitles)}"
               )
 
 
               if end < len(subtitles):
 
-                  time.sleep(2)
+                  time.sleep(3)
 
 
           # ====================================================
           # FINAL VALIDATION
           # ====================================================
 
-          if (
-              len(translated_all)
-              != len(subtitles)
-          ):
-
-              raise RuntimeError(
-                  "Final subtitle count does not match "
-                  "the original subtitle count."
-              )
-
-
-          for original, translated in zip(
+          validate_translation(
               subtitles,
               translated_all
-          ):
-
-              if (
-                  original["number"]
-                  != translated["number"]
-              ):
-
-                  raise RuntimeError(
-                      "Final subtitle numbering changed."
-                  )
-
-
-              if (
-                  original["timing"]
-                  != translated["timing"]
-              ):
-
-                  raise RuntimeError(
-                      "Final subtitle timing changed."
-                  )
+          )
 
 
           with open(
@@ -1245,18 +1218,10 @@ jobs:
                       f"{message_id}..."
                   )
 
-                  try:
-
-                      item = await client.get_messages(
-                          entity,
-                          ids=int(message_id)
-                      )
-
-                  except Exception as e:
-
-                      raise RuntimeError(
-                          f"Cannot read Telegram message: {e}"
-                      )
+                  item = await client.get_messages(
+                      entity,
+                      ids=int(message_id)
+                  )
 
 
                   if item:
@@ -1308,11 +1273,9 @@ jobs:
 
                                   found = item
 
-                          else:
+                          elif is_video:
 
-                              if is_video:
-
-                                  found = item
+                              found = item
 
 
               if not found:
@@ -1380,10 +1343,9 @@ jobs:
 
                               continue
 
-                      else:
+                      elif not is_video:
 
-                          if not is_video:
-                              continue
+                          continue
 
 
                       found = item
@@ -1682,6 +1644,7 @@ jobs:
                       "compression_ratio",
                       0.0
                   )
+              )
 
 
               if no_speech_prob > 0.97:
@@ -1946,6 +1909,8 @@ jobs:
         if: ${{ inputs.operation == 'video_ocr' }}
         run: |
 
+          sudo apt-get update
+
           sudo apt-get install -y \
             tesseract-ocr \
             tesseract-ocr-eng \
@@ -1953,6 +1918,7 @@ jobs:
             tesseract-ocr-hin \
             tesseract-ocr-mal \
             tesseract-ocr-tel \
+            tesseract-ocr-tam \
             tesseract-ocr-ben
 
           python -m pip install --upgrade pip
@@ -2001,13 +1967,6 @@ jobs:
 
           if not fps or fps <= 0:
               fps = 25
-
-
-          total_frames = int(
-              cap.get(
-                  cv2.CAP_PROP_FRAME_COUNT
-              )
-          )
 
 
           results = []
@@ -2277,6 +2236,9 @@ jobs:
 
       - name: Send OCR SRT to Telegram
         if: ${{ inputs.operation == 'video_ocr' }}
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          CHAT_ID: ${{ inputs.chat_id }}
         run: |
 
           curl -sS \
@@ -2423,7 +2385,7 @@ jobs:
           else
 
             echo "⚠️ Direct remux failed."
-            echo "🔄 Re-encoding to H.264/AAC for Telegram compatibility."
+            echo "🔄 Re-encoding to H.264/AAC."
 
             rm -f output.mp4
 
