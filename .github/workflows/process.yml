@@ -161,6 +161,7 @@ jobs:
           FALLBACK_MODEL = "gemini-3.7-flash"
 
           BATCH_SIZE = 80
+          CONTEXT_LINES = 10
 
           MIN_SPLIT_SIZE = 20
 
@@ -202,6 +203,18 @@ jobs:
           26. غيّر نص الحوار فقط.
           27. يجب أن يكون كل مقطع مترجمًا مقابل المقطع الأصلي نفسه.
           28. يجب أن يبقى رقم المقطع والتوقيت كما هما حرفيًا.
+
+          مهم جدًا بخصوص السياق:
+
+          - سيتم تزويدك بمقاطع سابقة ولاحقة للمقاطع المطلوب ترجمتها.
+          - مقاطع السياق موجودة للفهم فقط ولا يجب ترجمتها أو وضعها في الناتج.
+          - استخدم الحوار السابق واللاحق لمعرفة من يتحدث مع من.
+          - إذا كان جنس المخاطَب واضحًا من المقاطع السابقة، حافظ عليه في المقاطع الحالية.
+          - إذا كان السطر الحالي يحتمل المذكر والمؤنث، استخدم السياق لتحديد الصيغة الصحيحة.
+          - إذا كان المتحدث يتحدث مع امرأة في المقاطع السابقة، لا تحوّل المخاطبة إلى المذكر بلا سبب.
+          - وإذا كان يتحدث مع رجل، لا تحوّل المخاطبة إلى المؤنث بلا سبب.
+          - حافظ على اتساق جنس المخاطَب عبر المشهد.
+          - لا تعتبر كل سطر منفصلًا عن الحوار المحيط به.
           """
 
 
@@ -474,25 +487,102 @@ jobs:
                       )
 
 
+          def build_context(
+              all_subtitles,
+              start_index,
+              batch_length
+          ):
+
+              context_start = max(
+                  0,
+                  start_index - CONTEXT_LINES
+              )
+
+              context_end = min(
+                  len(all_subtitles),
+                  start_index
+                  + batch_length
+                  + CONTEXT_LINES
+              )
+
+              context_blocks = []
+
+              for index in range(
+                  context_start,
+                  context_end
+              ):
+
+                  if (
+                      start_index
+                      <= index
+                      < start_index + batch_length
+                  ):
+                      continue
+
+                  item = all_subtitles[index]
+
+                  context_blocks.append(
+                      item["number"]
+                      + "\n"
+                      + item["timing"]
+                      + "\n"
+                      + item["text"]
+                  )
+
+              if not context_blocks:
+
+                  return (
+                      "(لا يوجد سياق إضافي.)"
+                  )
+
+              return "\n\n".join(
+                  context_blocks
+              )
+
+
           def translate_once(
               client,
               batch,
-              model
+              model,
+              all_subtitles,
+              start_index
           ):
 
-              source = build_srt(batch)
+              source = build_srt(
+                  batch
+              )
+
+
+              context = build_context(
+                  all_subtitles,
+                  start_index,
+                  len(batch)
+              )
+
 
               prompt = (
                   PROMPT
                   + "\n\n"
-                  + "هذه المقاطع المطلوب ترجمتها:"
+                  + "==================================================\n"
+                  + "السياق المحيط — للفهم فقط ولا تترجمه:\n"
+                  + "==================================================\n\n"
+                  + context
                   + "\n\n"
+                  + "==================================================\n"
+                  + "المقاطع المطلوب ترجمتها فقط:\n"
+                  + "==================================================\n\n"
                   + source
+                  + "\n\n"
+                  + "أعد المقاطع المطلوب ترجمتها فقط. "
+                  + "لا تضع مقاطع السياق في الناتج."
               )
 
+
               print(
-                  "🚀 Sending batch to Gemini..."
+                  "🚀 Sending batch to Gemini "
+                  "with surrounding context..."
               )
+
 
               response_text = call_gemini(
                   client,
@@ -500,23 +590,28 @@ jobs:
                   prompt
               )
 
+
               translated = parse_srt(
                   extract_answer(
                       response_text
                   )
               )
 
+
               validate_translation(
                   batch,
                   translated
               )
+
 
               return translated
 
 
           def translate_batch(
               client,
-              batch
+              batch,
+              all_subtitles,
+              start_index
           ):
 
               batch_size = len(batch)
@@ -527,6 +622,13 @@ jobs:
                   f"{batch_size}"
               )
 
+              print(
+                  f"🧠 Context: up to "
+                  f"{CONTEXT_LINES} subtitles "
+                  f"before and after"
+              )
+
+
               # ------------------------------------------------
               # Primary model
               # ------------------------------------------------
@@ -536,7 +638,9 @@ jobs:
                   translated = translate_once(
                       client,
                       batch,
-                      PRIMARY_MODEL
+                      PRIMARY_MODEL,
+                      all_subtitles,
+                      start_index
                   )
 
                   print(
@@ -571,7 +675,9 @@ jobs:
                   translated = translate_once(
                       client,
                       batch,
-                      FALLBACK_MODEL
+                      FALLBACK_MODEL,
+                      all_subtitles,
+                      start_index
                   )
 
                   print(
@@ -627,13 +733,17 @@ jobs:
 
               left_result = translate_batch(
                   client,
-                  left_batch
+                  left_batch,
+                  all_subtitles,
+                  start_index
               )
 
 
               right_result = translate_batch(
                   client,
-                  right_batch
+                  right_batch,
+                  all_subtitles,
+                  start_index + len(left_batch)
               )
 
 
@@ -656,7 +766,9 @@ jobs:
               text = f.read()
 
 
-          subtitles = parse_srt(text)
+          subtitles = parse_srt(
+              text
+          )
 
 
           if not subtitles:
@@ -722,7 +834,9 @@ jobs:
               translated_batch = (
                   translate_batch(
                       client,
-                      batch
+                      batch,
+                      subtitles,
+                      start
                   )
               )
 
@@ -993,10 +1107,6 @@ jobs:
               found = None
 
 
-              # ------------------------------------------------
-              # Exact message first
-              # ------------------------------------------------
-
               if message_id:
 
                   print(
@@ -1073,10 +1183,6 @@ jobs:
 
                                   found = item
 
-
-              # ------------------------------------------------
-              # Fallback
-              # ------------------------------------------------
 
               if not found:
 
@@ -1577,10 +1683,6 @@ jobs:
                   f"{text}"
               )
 
-
-          # ====================================================
-          # FINAL CLEANUP
-          # ====================================================
 
           cleaned_results = []
 
