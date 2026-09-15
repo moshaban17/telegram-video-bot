@@ -377,7 +377,9 @@ jobs:
                             key=lambda m: abs((m.date - target_dt).total_seconds())
                         )
 
-                        diff = abs((message.date - target_dt).total_seconds())
+                        diff = abs(
+                            (message.date - target_dt).total_seconds()
+                        )
 
                         if diff > 120:
                             message = None
@@ -421,37 +423,37 @@ jobs:
             python -m pip install "telethon<2" cryptg
 
             cat > download_font.py <<'PYTHON'
-          import os
-          import asyncio
-          from telethon import TelegramClient
-          from telethon.sessions import StringSession
+            import os
+            import asyncio
+            from telethon import TelegramClient
+            from telethon.sessions import StringSession
 
-          async def main():
-              client = TelegramClient(
-                  StringSession(os.environ["TG_SESSION"]),
-                  int(os.environ["API_ID"]),
-                  os.environ["API_HASH"]
-              )
+            async def main():
+                client = TelegramClient(
+                    StringSession(os.environ["TG_SESSION"]),
+                    int(os.environ["API_ID"]),
+                    os.environ["API_HASH"]
+                )
 
-              await client.start()
+                await client.start()
 
-              message = await client.get_messages(
-                  os.environ["BOT_USERNAME"],
-                  ids=int(os.environ["FONT_MESSAGE_ID"])
-              )
+                message = await client.get_messages(
+                    os.environ["BOT_USERNAME"],
+                    ids=int(os.environ["FONT_MESSAGE_ID"])
+                )
 
-              if not message or not message.media:
-                  raise RuntimeError("لم يتم العثور على ملف الخط.")
+                if not message or not message.media:
+                    raise RuntimeError("لم يتم العثور على ملف الخط.")
 
-              await client.download_media(
-                  message,
-                  file="font_source"
-              )
+                await client.download_media(
+                    message,
+                    file="font_source"
+                )
 
-              await client.disconnect()
+                await client.disconnect()
 
-          asyncio.run(main())
-          PYTHON
+            asyncio.run(main())
+            PYTHON
 
             python download_font.py
           fi
