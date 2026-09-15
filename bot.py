@@ -802,8 +802,6 @@ async def menu_button(
                 "font_message_id": str(
                     settings.get("font_message_id", "")
                 ),
-                "source_type": "telegram",
-                "operation": "video",
                 "font_size": str(
                     settings.get("font_size", "26")
                 ),
