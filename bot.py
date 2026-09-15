@@ -796,6 +796,7 @@ async def menu_button(
                 "telegram_message_id": str(video_message_id or ""),
                 "telegram_message_date": str(context.user_data.get("video_message_date", "")),
                 "subtitle_message_id": str(subtitle_message_id or ""),
+                "subtitle_message_date": str(context.user_data.get("subtitle_message_date", "")),
                 "subtitle_type": context.user_data.get(
                     "subtitle_type",
                     settings.get("subtitle_type", "srt")
@@ -1207,6 +1208,7 @@ async def receive_document(
 
         context.user_data["srt_file_id"] = document.file_id
         context.user_data["subtitle_message_id"] = update.message.message_id
+        context.user_data["subtitle_message_date"] = update.message.date.isoformat()
         context.user_data["subtitle_received"] = True
         context.user_data["subtitle_type"] = (
             "ass"

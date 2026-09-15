@@ -49,6 +49,12 @@ on:
         type: string
         default: ""
 
+      subtitle_message_date:
+        description: "Telegram subtitle message date"
+        required: false
+        type: string
+        default: ""
+
       subtitle_type:
         description: "Subtitle type"
         required: false
@@ -222,6 +228,7 @@ jobs:
           CHAT_ID: ${{ inputs.chat_id }}
           BOT_USERNAME: "@CinmalekHardsubBot"
           SUBTITLE_MESSAGE_ID: ${{ inputs.subtitle_message_id }}
+          SUBTITLE_MESSAGE_DATE: ${{ inputs.subtitle_message_date }}
           SUBTITLE_TYPE: ${{ inputs.subtitle_type }}
           SUBTITLE_URL: ${{ inputs.subtitle_url }}
         run: |
@@ -243,13 +250,49 @@ jobs:
 
               await client.start()
 
-              message = await client.get_messages(
+              from datetime import datetime
+
+              target_date = os.environ.get("SUBTITLE_MESSAGE_DATE", "").strip()
+
+              if not target_date:
+                  raise RuntimeError("لم يتم إرسال تاريخ رسالة الترجمة من البوت.")
+
+              target_dt = datetime.fromisoformat(target_date)
+
+              recent = await client.get_messages(
                   os.environ["BOT_USERNAME"],
-                  ids=int(os.environ["SUBTITLE_MESSAGE_ID"])
+                  limit=50
               )
 
-              if not message or not message.media:
-                  raise RuntimeError("لم يتم العثور على ملف الترجمة.")
+              media_messages = [
+                  m for m in recent
+                  if m.media and m.date
+              ]
+
+              if not media_messages:
+                  raise RuntimeError("لم يتم العثور على رسائل Media داخل محادثة البوت.")
+
+              message = min(
+                  media_messages,
+                  key=lambda m: abs((m.date - target_dt).total_seconds())
+              )
+
+              difference = abs(
+                  (message.date - target_dt).total_seconds()
+              )
+
+              print("🔎 Selected subtitle message ID:", message.id)
+              print("🔎 Selected subtitle message date:", message.date)
+              print("🔎 Date difference:", difference, "seconds")
+
+              if difference > 120:
+                  raise RuntimeError(
+                      f"أقرب ملف ترجمة بعيد عن وقت الترجمة "
+                      f"بـ {difference:.1f} ثانية."
+                  )
+
+              if not message.media:
+                  raise RuntimeError("تم العثور على الرسالة لكن لا يوجد Media داخلها.")
 
               ext = ".ass" if os.environ["SUBTITLE_TYPE"].lower() in ("ass", "ssa") else ".srt"
 
