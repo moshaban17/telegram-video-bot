@@ -702,13 +702,6 @@ async def menu_button(
 
     elif query.data == "burn_start":
 
-        await query.message.reply_text(
-            "🟢 تم الوصول إلى burn_start\n\n"
-            f"video_received = {context.user_data.get('video_received')}\n"
-            f"subtitle_received = {context.user_data.get('subtitle_received')}\n"
-            f"video_message_id = {context.user_data.get('video_message_id')}\n"
-            f"subtitle_message_id = {context.user_data.get('subtitle_message_id')}"
-        )
 
         if not context.user_data.get("video_received"):
             await query.answer(
@@ -724,16 +717,16 @@ async def menu_button(
             )
             return
 
-        if not context.user_data.get("video_message_id"):
+        if not context.user_data.get("video_message_date"):
             await query.answer(
-                "❌ لم يتم حفظ رقم رسالة الفيديو.",
+                "❌ لم يتم حفظ تاريخ رسالة الفيديو.",
                 show_alert=True
             )
             return
 
-        if not context.user_data.get("subtitle_message_id"):
+        if not context.user_data.get("subtitle_message_date"):
             await query.answer(
-                "❌ لم يتم حفظ رقم رسالة الترجمة.",
+                "❌ لم يتم حفظ تاريخ رسالة الترجمة.",
                 show_alert=True
             )
             return
@@ -745,13 +738,6 @@ async def menu_button(
             "🚀 سيتم تشغيل GitHub لمعالجة الفيلم."
         )
 
-        if False:
-            await query.answer("❌ ابعت الفيلم أولًا.", show_alert=True)
-            return
-
-        if not context.user_data.get("subtitle_received"):
-            await query.answer("❌ ابعت ملف الترجمة أولًا.", show_alert=True)
-            return
 
         video_message_id = context.user_data.get("video_message_id")
         subtitle_message_id = context.user_data.get("subtitle_message_id")
@@ -766,8 +752,6 @@ async def menu_button(
             settings = {}
 
         watermark_enabled = settings.get("watermark_enabled", False)
-
-        await query.answer()
 
         await query.edit_message_text(
             "🎬 جاري تجهيز عملية حرق الترجمة...\n\n"
@@ -804,6 +788,9 @@ async def menu_button(
                 "font_message_id": str(
                     settings.get("font_message_id", "")
                 ),
+                "font_message_date": str(
+                    settings.get("font_message_date", "")
+                ),
                 "font_size": str(
                     settings.get("font_size", "26")
                 ),
@@ -818,6 +805,10 @@ async def menu_button(
                 ),
                 "watermark_message_id": str(
                     settings.get("watermark_message_id", "")
+                    if watermark_enabled else ""
+                ),
+                "watermark_message_date": str(
+                    settings.get("watermark_message_date", "")
                     if watermark_enabled else ""
                 ),
                 "watermark_position": settings.get(
@@ -972,8 +963,6 @@ async def receive_text(
             "subtitle_url": "",
             "resolution": "same",
             "chat_id": str(chat_id),
-            "srt_file_id": "",
-            "operation": "video",
         },
     }
 
@@ -1013,10 +1002,6 @@ async def receive_text(
 async def receive_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mode = context.user_data.get("mode")
 
-    await update.message.reply_text(
-        f"🔎 وضع التشغيل الحالي: {mode}"
-    )
-
     if mode == "subtitle":
         context.user_data["video_message_id"] = update.message.message_id
         context.user_data["video_message_date"] = update.message.date.isoformat()
@@ -1028,6 +1013,19 @@ async def receive_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "اختار وظيفة من القائمة أولًا:",
             reply_markup=main_menu(),
+        )
+        return
+
+    # في وضع حرق الترجمة: نحفظ الفيديو فقط وننتظر ملف الترجمة
+    if mode == "subtitle":
+        context.user_data["video_received"] = True
+        context.user_data["video_message_id"] = update.message.message_id
+        context.user_data["video_message_date"] = update.message.date.isoformat()
+
+        await update.message.reply_text(
+            "🎬 تم استلام الفيديو.\\n\\n"
+            "📝 ابعت الآن ملف الترجمة SRT أو ASS، "
+            "ثم اضغط «بدء حرق الترجمة»."
         )
         return
 
@@ -1069,10 +1067,7 @@ async def receive_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "subtitle_url": "",
             "resolution": "same",
             "chat_id": str(chat_id),
-            "srt_file_id": "",
             "telegram_message_id": str(message_id),
-            "source_type": "telegram",
-            "operation": operation,
         },
     }
 
@@ -1135,6 +1130,7 @@ async def receive_document(
         settings["watermark_file_id"] = document.file_id
         settings["watermark_file_name"] = file_name
         settings["watermark_message_id"] = update.message.message_id
+        settings["watermark_message_date"] = update.message.date.isoformat()
         settings["watermark_position"] = settings.get(
             "watermark_position", "top_left"
         )
@@ -1149,6 +1145,7 @@ async def receive_document(
         context.user_data["waiting_for_watermark"] = False
         context.user_data["watermark_file_id"] = document.file_id
         context.user_data["watermark_message_id"] = update.message.message_id
+        context.user_data["watermark_message_date"] = update.message.date.isoformat()
 
         await update.message.reply_text(
             "✅ تم حفظ العلامة المائية بنجاح.\n\n"
@@ -1179,6 +1176,7 @@ async def receive_document(
         settings["font_file_id"] = document.file_id
         settings["font_file_name"] = file_name
         settings["font_message_id"] = update.message.message_id
+        settings["font_message_date"] = update.message.date.isoformat()
 
         settings_path.write_text(
             json.dumps(settings, ensure_ascii=False, indent=2)
@@ -1187,6 +1185,7 @@ async def receive_document(
         context.user_data["waiting_for_font"] = False
         context.user_data["font_file_id"] = document.file_id
         context.user_data["font_message_id"] = update.message.message_id
+        context.user_data["font_message_date"] = update.message.date.isoformat()
 
         await update.message.reply_text(
             "✅ تم حفظ ملف الخط بنجاح.\n\n"
@@ -1206,7 +1205,6 @@ async def receive_document(
             )
             return
 
-        context.user_data["srt_file_id"] = document.file_id
         context.user_data["subtitle_message_id"] = update.message.message_id
         context.user_data["subtitle_message_date"] = update.message.date.isoformat()
         context.user_data["subtitle_received"] = True
@@ -1216,9 +1214,6 @@ async def receive_document(
             else "srt"
         )
 
-        chat_id = update.effective_chat.id
-        video_message_id = context.user_data.get("video_message_id")
-        subtitle_type = context.user_data["subtitle_type"]
 
         await update.message.reply_text(
             "✅ تم استلام ملف الترجمة.\n\n"
