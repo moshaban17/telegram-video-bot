@@ -145,8 +145,22 @@ jobs:
                   ids=int(os.environ["VIDEO_MESSAGE_ID"])
               )
 
-              if not message or not message.media:
-                  raise RuntimeError("لم يتم العثور على الفيديو في رسالة تيليجرام.")
+              if not message:
+                  raise RuntimeError(
+                      f"لم يتم العثور على رسالة تيليجرام رقم {os.environ['VIDEO_MESSAGE_ID']} "
+                      f"في المحادثة {os.environ['CHAT_ID']}."
+                  )
+
+              print("🔎 Telegram message ID:", message.id)
+              print("🔎 Message media:", message.media)
+              print("🔎 Message document:", message.document)
+              print("🔎 Message video:", message.video)
+              print("🔎 Message photo:", message.photo)
+
+              if not message.media:
+                  raise RuntimeError(
+                      f"تم العثور على الرسالة {message.id} لكن لا يوجد Media داخلها."
+                  )
 
               await client.download_media(
                   message,
