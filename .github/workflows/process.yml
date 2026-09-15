@@ -121,7 +121,7 @@ jobs:
           API_HASH: ${{ secrets.API_HASH }}
           TG_SESSION: ${{ secrets.TG_SESSION }}
           CHAT_ID: ${{ inputs.chat_id }}
-          BOT_USERNAME: "@cinmalekbot"
+          BOT_USERNAME: "@CinmalekHardsubBot"
           VIDEO_MESSAGE_ID: ${{ inputs.telegram_message_id }}
         run: |
           python -m pip install "telethon<2" cryptg
@@ -181,7 +181,7 @@ jobs:
           API_HASH: ${{ secrets.API_HASH }}
           TG_SESSION: ${{ secrets.TG_SESSION }}
           CHAT_ID: ${{ inputs.chat_id }}
-          BOT_USERNAME: "@cinmalekbot"
+          BOT_USERNAME: "@CinmalekHardsubBot"
           SUBTITLE_MESSAGE_ID: ${{ inputs.subtitle_message_id }}
           SUBTITLE_TYPE: ${{ inputs.subtitle_type }}
           SUBTITLE_URL: ${{ inputs.subtitle_url }}
@@ -236,7 +236,7 @@ jobs:
           API_HASH: ${{ secrets.API_HASH }}
           TG_SESSION: ${{ secrets.TG_SESSION }}
           CHAT_ID: ${{ inputs.chat_id }}
-          BOT_USERNAME: "@cinmalekbot"
+          BOT_USERNAME: "@CinmalekHardsubBot"
           WATERMARK_MESSAGE_ID: ${{ inputs.watermark_message_id }}
           WATERMARK_ENABLED: ${{ inputs.watermark_enabled }}
         run: |
@@ -285,7 +285,7 @@ jobs:
           API_HASH: ${{ secrets.API_HASH }}
           TG_SESSION: ${{ secrets.TG_SESSION }}
           CHAT_ID: ${{ inputs.chat_id }}
-          BOT_USERNAME: "@cinmalekbot"
+          BOT_USERNAME: "@CinmalekHardsubBot"
           FONT_MESSAGE_ID: ${{ inputs.font_message_id }}
         run: |
           if [ -n "$FONT_MESSAGE_ID" ]; then
