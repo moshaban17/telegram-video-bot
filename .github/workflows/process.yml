@@ -37,6 +37,12 @@ on:
         type: string
         default: ""
 
+      telegram_message_date:
+        description: "Telegram video message date"
+        required: false
+        type: string
+        default: ""
+
       subtitle_message_id:
         description: "Telegram subtitle message ID"
         required: false
@@ -123,6 +129,7 @@ jobs:
           CHAT_ID: ${{ inputs.chat_id }}
           BOT_USERNAME: "@CinmalekHardsubBot"
           VIDEO_MESSAGE_ID: ${{ inputs.telegram_message_id }}
+          VIDEO_MESSAGE_DATE: ${{ inputs.telegram_message_date }}
         run: |
           python -m pip install "telethon<2" cryptg
 
@@ -145,22 +152,46 @@ jobs:
 
               print("🔎 Bot ID:", bot.id)
               print("🔎 Bot username:", getattr(bot, "username", None))
-              print("🔎 Looking for message ID:", os.environ["VIDEO_MESSAGE_ID"])
+              target_date = os.environ.get("VIDEO_MESSAGE_DATE", "").strip()
 
-              message = await client.get_messages(
-                  bot,
-                  ids=int(os.environ["VIDEO_MESSAGE_ID"])
+              print("🔎 Looking for video near date:", target_date)
+
+              if not target_date:
+                  raise RuntimeError("لم يتم إرسال تاريخ رسالة الفيديو من البوت.")
+
+              from datetime import datetime
+
+              target_dt = datetime.fromisoformat(target_date)
+
+              recent = await client.get_messages(bot, limit=50)
+
+              media_messages = [
+                  m for m in recent
+                  if m.media and m.date
+              ]
+
+              if not media_messages:
+                  raise RuntimeError(
+                      f"لم يتم العثور على رسائل Media داخل محادثة البوت {bot.id}."
+                  )
+
+              message = min(
+                  media_messages,
+                  key=lambda m: abs((m.date - target_dt).total_seconds())
               )
 
-              if not message:
-                  recent = await client.get_messages(bot, limit=20)
-                  print("🔎 Recent message IDs:")
-                  for m in recent:
-                      print("   ", m.id, "| media:", bool(m.media))
+              difference = abs(
+                  (message.date - target_dt).total_seconds()
+              )
 
+              print("🔎 Selected Telegram message ID:", message.id)
+              print("🔎 Selected message date:", message.date)
+              print("🔎 Date difference:", difference, "seconds")
+
+              if difference > 120:
                   raise RuntimeError(
-                      f"لم يتم العثور على رسالة {os.environ['VIDEO_MESSAGE_ID']} "
-                      f"داخل محادثة البوت {bot.id}."
+                      f"أقرب رسالة Media بعيدة عن وقت الفيديو "
+                      f"بـ {difference:.1f} ثانية."
                   )
 
               print("🔎 Telegram message ID:", message.id)

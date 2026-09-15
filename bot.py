@@ -794,6 +794,7 @@ async def menu_button(
                 "resolution": "same",
                 "chat_id": str(update.effective_chat.id),
                 "telegram_message_id": str(video_message_id or ""),
+                "telegram_message_date": str(context.user_data.get("video_message_date", "")),
                 "subtitle_message_id": str(subtitle_message_id or ""),
                 "subtitle_type": context.user_data.get(
                     "subtitle_type",
@@ -1017,6 +1018,7 @@ async def receive_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if mode == "subtitle":
         context.user_data["video_message_id"] = update.message.message_id
+        context.user_data["video_message_date"] = update.message.date.isoformat()
         context.user_data["video_received"] = True
         await update.message.reply_text("✅ تم استلام الفيلم.\n\n📝 الآن ابعت ملف الترجمة SRT أو ASS.")
         return
