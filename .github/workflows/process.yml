@@ -141,22 +141,30 @@ jobs:
 
               await client.start()
 
+              bot = await client.get_entity(os.environ["BOT_USERNAME"])
+
+              print("🔎 Bot ID:", bot.id)
+              print("🔎 Bot username:", getattr(bot, "username", None))
+              print("🔎 Looking for message ID:", os.environ["VIDEO_MESSAGE_ID"])
+
               message = await client.get_messages(
-                  os.environ["BOT_USERNAME"],
+                  bot,
                   ids=int(os.environ["VIDEO_MESSAGE_ID"])
               )
 
               if not message:
+                  recent = await client.get_messages(bot, limit=20)
+                  print("🔎 Recent message IDs:")
+                  for m in recent:
+                      print("   ", m.id, "| media:", bool(m.media))
+
                   raise RuntimeError(
-                      f"لم يتم العثور على رسالة تيليجرام رقم {os.environ['VIDEO_MESSAGE_ID']} "
-                      f"في المحادثة {os.environ['CHAT_ID']}."
+                      f"لم يتم العثور على رسالة {os.environ['VIDEO_MESSAGE_ID']} "
+                      f"داخل محادثة البوت {bot.id}."
                   )
 
               print("🔎 Telegram message ID:", message.id)
               print("🔎 Message media:", message.media)
-              print("🔎 Message document:", message.document)
-              print("🔎 Message video:", message.video)
-              print("🔎 Message photo:", message.photo)
 
               if not message.media:
                   raise RuntimeError(
