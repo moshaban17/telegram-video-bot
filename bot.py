@@ -1,6 +1,7 @@
 import os
 import json
 import requests
+from pathlib import Path
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -25,7 +26,7 @@ GITHUB_REPO = "telegram-video-bot"
 WORKFLOW_FILE = "process.yml"
 GITHUB_REF = "main"
 
-SETTINGS_FILE = "settings.json"
+SETTINGS_FILE = Path("settings.json")
 
 
 # =========================
@@ -34,24 +35,33 @@ SETTINGS_FILE = "settings.json"
 
 DEFAULT_SETTINGS = {
     "font_message_id": "",
-    "font_size": "28",
-    "font_color": "FFFFFF",
-    "subtitle_outline": "1",
-    "subtitle_box": "0",
+    "font_message_date": "",
+    "font_file_id": "",
+    "font_file_name": "",
+    "font_size": "26",
+    "font_color": "white",
+
+    "subtitle_outline": "0.5",
+    "subtitle_box": "off",
+
     "watermark_message_id": "",
-    "watermark_enabled": "0",
-    "watermark_position": "bottom_right",
+    "watermark_message_date": "",
+    "watermark_file_id": "",
+    "watermark_file_name": "",
+    "watermark_enabled": False,
+    "watermark_position": "top_left",
     "watermark_size": "20",
 }
 
 
 def load_settings():
-    if not os.path.exists(SETTINGS_FILE):
+    if not SETTINGS_FILE.exists():
         return DEFAULT_SETTINGS.copy()
 
     try:
-        with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
+        data = json.loads(
+            SETTINGS_FILE.read_text(encoding="utf-8")
+        )
 
         settings = DEFAULT_SETTINGS.copy()
 
@@ -65,13 +75,14 @@ def load_settings():
 
 
 def save_settings(settings):
-    with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
-        json.dump(
+    SETTINGS_FILE.write_text(
+        json.dumps(
             settings,
-            f,
             ensure_ascii=False,
             indent=2
-        )
+        ),
+        encoding="utf-8"
+    )
 
 
 # =========================
@@ -86,9 +97,18 @@ def workflow_url():
     )
 
 
-def run_github_workflow(inputs):
+def github_headers():
+    return {
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {GH_TOKEN}",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "Content-Type": "application/json",
+    }
+
+
+def dispatch_workflow(inputs):
     if not GH_TOKEN:
-        return False, "GH_TOKEN غير موجود."
+        return None, "GH_TOKEN غير موجود."
 
     clean_inputs = {}
 
@@ -103,63 +123,36 @@ def run_github_workflow(inputs):
         "inputs": clean_inputs,
     }
 
-    payload_bytes = json.dumps(
-        payload,
-        ensure_ascii=False,
-        separators=(",", ":")
-    ).encode("utf-8")
-
-    headers = {
-        "Accept": "application/vnd.github+json",
-        "Authorization": f"Bearer {GH_TOKEN}",
-        "X-GitHub-Api-Version": "2022-11-28",
-        "Content-Type": "application/json; charset=utf-8",
-    }
-
     try:
         response = requests.post(
             workflow_url(),
-            headers=headers,
-            data=payload_bytes,
+            headers=github_headers(),
+            json=payload,
             timeout=30,
         )
 
-        if response.status_code in (200, 201, 202, 204):
-            return True, ""
+        return response, None
 
-        try:
-            error_data = response.json()
-            message = error_data.get("message", "")
-        except Exception:
-            message = response.text[:1000]
-
-        return False, (
-            f"GitHub HTTP {response.status_code}: "
-            f"{message}"
-        )
-
-    except UnicodeEncodeError as e:
-        return False, (
-            "حدث خطأ ترميز أثناء إرسال طلب GitHub: "
-            f"{e}"
-        )
-
-    except requests.RequestException as e:
-        return False, f"خطأ اتصال مع GitHub: {e}"
-
-    except Exception as e:
-        return False, f"خطأ غير متوقع: {e}"
+    except Exception as exc:
+        return None, str(exc)
 
 
-# =========================
-# USER DATA
-# =========================
+def github_success(response):
+    return (
+        response is not None
+        and response.status_code in (200, 201, 202, 204)
+    )
 
-def get_user_settings(context):
-    if "settings" not in context.user_data:
-        context.user_data["settings"] = load_settings()
 
-    return context.user_data["settings"]
+def github_error_text(response):
+    if response is None:
+        return "لا توجد استجابة من GitHub."
+
+    try:
+        return response.text[:1500]
+
+    except Exception:
+        return f"HTTP {response.status_code}"
 
 
 # =========================
@@ -167,7 +160,17 @@ def get_user_settings(context):
 # =========================
 
 def main_menu():
-    keyboard = [
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(
+                "🔗 تحميل من رابط",
+                callback_data="download"
+            ),
+            InlineKeyboardButton(
+                "🎬 تحويل دقة",
+                callback_data="convert"
+            )
+        ],
         [
             InlineKeyboardButton(
                 "📝 حرق ترجمة",
@@ -176,711 +179,1526 @@ def main_menu():
         ],
         [
             InlineKeyboardButton(
-                "🔤 إعدادات الخط",
-                callback_data="font_settings"
+                "🔊 إدارة الصوت",
+                callback_data="audio"
             ),
             InlineKeyboardButton(
-                "⚙️ إعدادات الترجمة",
-                callback_data="subtitle_settings"
+                "📦 استخراج ترجمة",
+                callback_data="extract"
             )
         ],
         [
             InlineKeyboardButton(
                 "🖼️ Watermark",
                 callback_data="watermark"
+            ),
+            InlineKeyboardButton(
+                "🔗 ملف → رابط",
+                callback_data="file_link"
             )
         ],
-    ]
-
-    return InlineKeyboardMarkup(keyboard)
+        [
+            InlineKeyboardButton(
+                "👁️ كلام الشاشة → SRT",
+                callback_data="ocr"
+            )
+        ]
+    ])
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
 
-    context.user_data["stage"] = None
-    context.user_data["video_message_id"] = None
-    context.user_data["subtitle_message_id"] = None
-    context.user_data["subtitle_type"] = None
-
     await update.message.reply_text(
-        "🎬 اختر العملية:",
+        "🎬 أهلاً بك في بوت معالجة الفيديو.\n\n"
+        "اختار الوظيفة المطلوبة:",
         reply_markup=main_menu()
     )
 
 
 # =========================
-# SUBTITLE BURN
+# SUBTITLE MENU
 # =========================
 
-async def subtitle_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    context.user_data["stage"] = "subtitle_video"
-
-    await query.message.reply_text(
-        "🎬 أرسل الفيديو أولًا."
-    )
-
-
-async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if context.user_data.get("stage") != "subtitle_video":
-        return
-
-    message = update.message
-
-    if not message.video and not message.document:
-        await message.reply_text(
-            "❌ أرسل الفيديو كفيديو أو كملف."
-        )
-        return
-
-    context.user_data["video_message_id"] = message.message_id
-    context.user_data["stage"] = "subtitle_file"
-
-    await message.reply_text(
-        "✅ تم استلام الفيديو.\n\n"
-        "📝 أرسل ملف الترجمة SRT أو ASS أو SSA."
-    )
-
-
-async def handle_subtitle(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if context.user_data.get("stage") != "subtitle_file":
-        return
-
-    message = update.message
-
-    if not message.document:
-        await message.reply_text(
-            "❌ أرسل ملف الترجمة كملف."
-        )
-        return
-
-    filename = message.document.file_name or ""
-    lower_name = filename.lower()
-
-    if lower_name.endswith(".srt"):
-        subtitle_type = "srt"
-
-    elif lower_name.endswith(".ass"):
-        subtitle_type = "ass"
-
-    elif lower_name.endswith(".ssa"):
-        subtitle_type = "ssa"
-
-    else:
-        await message.reply_text(
-            "❌ الملف يجب أن يكون SRT أو ASS أو SSA."
-        )
-        return
-
-    context.user_data["subtitle_message_id"] = message.message_id
-    context.user_data["subtitle_type"] = subtitle_type
-
-    await message.reply_text(
-        "⏳ جاري تشغيل حرق الترجمة..."
-    )
-
-    await dispatch_burn(update, context)
-
-
-# =========================
-# DISPATCH BURN
-# =========================
-
-async def dispatch_burn(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    settings = get_user_settings(context)
-
-    chat_id = update.effective_chat.id
-
-    video_message_id = context.user_data.get(
-        "video_message_id",
-        ""
-    )
-
-    subtitle_message_id = context.user_data.get(
-        "subtitle_message_id",
-        ""
-    )
-
-    subtitle_type = context.user_data.get(
-        "subtitle_type",
-        "srt"
-    )
-
-    watermark_enabled = str(
-        settings.get("watermark_enabled", "0")
-    ).lower()
-
-    inputs = {
-        "chat_id": str(chat_id),
-
-        "video_message_id": str(
-            video_message_id
-        ),
-
-        "subtitle_message_id": str(
-            subtitle_message_id
-        ),
-
-        "subtitle_type": str(
-            subtitle_type
-        ),
-
-        "font_message_id": str(
-            settings.get("font_message_id", "")
-        ),
-
-        "font_size": str(
-            settings.get("font_size", "28")
-        ),
-
-        "font_color": str(
-            settings.get("font_color", "FFFFFF")
-        ),
-
-        "subtitle_outline": str(
-            settings.get("subtitle_outline", "1")
-        ),
-
-        "subtitle_box": str(
-            settings.get("subtitle_box", "0")
-        ),
-
-        "watermark_message_id": str(
-            settings.get("watermark_message_id", "")
-            if watermark_enabled == "1"
-            else ""
-        ),
-
-        "watermark_enabled": watermark_enabled,
-
-        "watermark_position": str(
-            settings.get(
-                "watermark_position",
-                "bottom_right"
-            )
-        ),
-
-        "watermark_size": str(
-            settings.get(
-                "watermark_size",
-                "20"
-            )
-        ),
-    }
-
-    success, error = run_github_workflow(inputs)
-
-    if success:
-        await update.effective_chat.send_message(
-            "✅ تم تشغيل GitHub بنجاح.\n"
-            "⏳ جاري معالجة الفيديو..."
-        )
-
-        context.user_data["stage"] = None
-
-    else:
-        await update.effective_chat.send_message(
-            f"❌ حدث خطأ أثناء تشغيل GitHub:\n{error}"
-        )
-
-
-# =========================
-# FONT SETTINGS
-# =========================
-
-async def font_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    keyboard = [
+def subtitle_menu():
+    return InlineKeyboardMarkup([
         [
             InlineKeyboardButton(
-                "📤 رفع خط",
-                callback_data="font_upload"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "📐 حجم الخط",
-                callback_data="font_size"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "🎨 لون الخط",
-                callback_data="font_color"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "⬅️ رجوع",
-                callback_data="back"
-            )
-        ],
-    ]
-
-    await query.message.reply_text(
-        "🔤 إعدادات الخط:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-
-
-async def font_upload_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    context.user_data["stage"] = "font_upload"
-
-    await query.message.reply_text(
-        "📤 أرسل ملف الخط TTF أو OTF.\n"
-        "ويمكن أيضًا إرسال RAR يحتوي على الخط."
-    )
-
-
-async def handle_font_upload(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if context.user_data.get("stage") != "font_upload":
-        return
-
-    message = update.message
-
-    if not message.document:
-        await message.reply_text(
-            "❌ أرسل ملف الخط كملف."
-        )
-        return
-
-    filename = (
-        message.document.file_name or ""
-    ).lower()
-
-    if not (
-        filename.endswith(".ttf")
-        or filename.endswith(".otf")
-        or filename.endswith(".rar")
-    ):
-        await message.reply_text(
-            "❌ أرسل TTF أو OTF أو RAR."
-        )
-        return
-
-    settings = get_user_settings(context)
-
-    settings["font_message_id"] = str(
-        message.message_id
-    )
-
-    save_settings(settings)
-
-    context.user_data["stage"] = None
-
-    await message.reply_text(
-        "✅ تم حفظ الخط.\n"
-        "سيُستخدم تلقائيًا في عمليات حرق الترجمة القادمة."
-    )
-
-
-# =========================
-# SUBTITLE SETTINGS
-# =========================
-
-async def subtitle_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    keyboard = [
-        [
-            InlineKeyboardButton(
-                "📐 حجم الخط",
-                callback_data="font_size"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "⬛ الحواف",
-                callback_data="outline"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "⬛ صندوق خلفية",
-                callback_data="box"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "⬅️ رجوع",
-                callback_data="back"
-            )
-        ],
-    ]
-
-    await query.message.reply_text(
-        "⚙️ إعدادات الترجمة:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-
-
-async def font_size_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    context.user_data["stage"] = "font_size"
-
-    await query.message.reply_text(
-        "📐 أرسل حجم الخط، مثل:\n\n"
-        "28\n"
-        "30\n"
-        "32"
-    )
-
-
-async def outline_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    keyboard = [
-        [
-            InlineKeyboardButton(
-                "بدون حواف",
-                callback_data="outline_0"
+                "🔤 الخط",
+                callback_data="burn_font"
             ),
             InlineKeyboardButton(
-                "حواف خفيفة",
-                callback_data="outline_1"
+                "🔠 حجم الخط",
+                callback_data="burn_size"
             )
         ],
         [
             InlineKeyboardButton(
-                "حواف متوسطة",
-                callback_data="outline_2"
+                "🎨 لون الترجمة",
+                callback_data="burn_color"
+            ),
+            InlineKeyboardButton(
+                "⬛ البوكس",
+                callback_data="burn_box"
             )
         ],
-    ]
+        [
+            InlineKeyboardButton(
+                "▫️ الحواف",
+                callback_data="burn_outline"
+            ),
+            InlineKeyboardButton(
+                "🖼️ العلامة المائية",
+                callback_data="burn_watermark"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🎬 ابدأ الحرق",
+                callback_data="burn_start"
+            ),
+            InlineKeyboardButton(
+                "🏠 القائمة الرئيسية",
+                callback_data="main_menu"
+            )
+        ]
+    ])
 
-    await query.message.reply_text(
-        "⬛ اختر سمك الحواف:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+
+def resolution_menu():
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(
+                "نفس الدقة",
+                callback_data="res_same"
+            ),
+            InlineKeyboardButton(
+                "1080p",
+                callback_data="res_1080p"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "720p",
+                callback_data="res_720p"
+            ),
+            InlineKeyboardButton(
+                "480p",
+                callback_data="res_480p"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "360p",
+                callback_data="res_360p"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🏠 القائمة الرئيسية",
+                callback_data="main_menu"
+            )
+        ]
+    ])
 
 
-async def box_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# =========================
+# CALLBACK HANDLER
+# =========================
+
+async def menu_button(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
     query = update.callback_query
+
     await query.answer()
 
-    keyboard = [
-        [
-            InlineKeyboardButton(
-                "بدون صندوق",
-                callback_data="box_0"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "صندوق خلف النص",
-                callback_data="box_1"
-            )
-        ],
-    ]
-
-    await query.message.reply_text(
-        "⬛ صندوق خلف الترجمة:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-
-
-async def handle_settings_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    stage = context.user_data.get("stage")
-
-    if stage not in (
-        "font_size",
-        "font_color"
-    ):
-        return
-
-    text = update.message.text.strip()
-
-    settings = get_user_settings(context)
-
-    if stage == "font_size":
-        try:
-            size = int(text)
-
-            if size < 10 or size > 100:
-                raise ValueError
-
-            settings["font_size"] = str(size)
-
-            save_settings(settings)
-
-            context.user_data["stage"] = None
-
-            await update.message.reply_text(
-                f"✅ تم حفظ حجم الخط: {size}"
-            )
-
-        except Exception:
-            await update.message.reply_text(
-                "❌ أرسل رقمًا بين 10 و100."
-            )
-
-        return
-
-    if stage == "font_color":
-        color = text.replace("#", "").upper()
-
-        if len(color) != 6:
-            await update.message.reply_text(
-                "❌ اللون يجب أن يكون HEX من 6 أحرف، مثل FFFFFF."
-            )
-            return
-
-        try:
-            int(color, 16)
-
-        except ValueError:
-            await update.message.reply_text(
-                "❌ قيمة اللون غير صحيحة."
-            )
-            return
-
-        settings["font_color"] = color
-
-        save_settings(settings)
-
-        context.user_data["stage"] = None
-
-        await update.message.reply_text(
-            f"✅ تم حفظ لون الخط: {color}"
-        )
-
-
-async def font_color_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    context.user_data["stage"] = "font_color"
-
-    await query.message.reply_text(
-        "🎨 أرسل لون الخط بصيغة HEX.\n\n"
-        "مثال:\n"
-        "FFFFFF"
-    )
-
-
-# =========================
-# WATERMARK
-# =========================
-
-async def watermark_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    keyboard = [
-        [
-            InlineKeyboardButton(
-                "📤 رفع Watermark",
-                callback_data="watermark_upload"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "❌ تعطيل",
-                callback_data="watermark_disable"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "⬅️ رجوع",
-                callback_data="back"
-            )
-        ],
-    ]
-
-    await query.message.reply_text(
-        "🖼️ إعدادات Watermark:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-
-
-async def watermark_upload_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    context.user_data["stage"] = "watermark_upload"
-
-    await query.message.reply_text(
-        "📤 أرسل صورة الـWatermark أو RAR يحتوي عليها."
-    )
-
-
-async def handle_watermark_upload(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if context.user_data.get("stage") != "watermark_upload":
-        return
-
-    message = update.message
-
-    if not message.document and not message.photo:
-        await message.reply_text(
-            "❌ أرسل صورة أو ملف RAR."
-        )
-        return
-
-    if message.document:
-        filename = (
-            message.document.file_name or ""
-        ).lower()
-
-        if not (
-            filename.endswith(".rar")
-            or filename.endswith(".png")
-            or filename.endswith(".jpg")
-            or filename.endswith(".jpeg")
-            or filename.endswith(".webp")
-        ):
-            await message.reply_text(
-                "❌ أرسل صورة أو ملف RAR."
-            )
-            return
-
-    settings = get_user_settings(context)
-
-    settings["watermark_enabled"] = "1"
-    settings["watermark_message_id"] = str(
-        message.message_id
-    )
-
-    save_settings(settings)
-
-    context.user_data["stage"] = None
-
-    await message.reply_text(
-        "✅ تم حفظ الـWatermark وتفعيله."
-    )
-
-
-# =========================
-# DOCUMENT / PHOTO ROUTER
-# =========================
-
-async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    stage = context.user_data.get("stage")
-
-    if stage == "subtitle_video":
-        await handle_video(update, context)
-        return
-
-    if stage == "subtitle_file":
-        await handle_subtitle(update, context)
-        return
-
-    if stage == "font_upload":
-        await handle_font_upload(update, context)
-        return
-
-    if stage == "watermark_upload":
-        await handle_watermark_upload(update, context)
-        return
-
-
-async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if context.user_data.get("stage") == "watermark_upload":
-        await handle_watermark_upload(update, context)
-
-
-# =========================
-# CALLBACKS
-# =========================
-
-async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
     data = query.data
 
-    if data == "subtitle":
-        await subtitle_start(update, context)
+    # -------------------------
+    # Main menu
+    # -------------------------
 
-    elif data == "font_settings":
-        await font_settings(update, context)
+    if data == "main_menu":
+        context.user_data.clear()
 
-    elif data == "subtitle_settings":
-        await subtitle_settings(update, context)
-
-    elif data == "watermark":
-        await watermark_menu(update, context)
-
-    elif data == "font_upload":
-        await font_upload_start(update, context)
-
-    elif data == "font_size":
-        await font_size_start(update, context)
-
-    elif data == "font_color":
-        await font_color_start(update, context)
-
-    elif data == "outline":
-        await outline_start(update, context)
-
-    elif data == "box":
-        await box_start(update, context)
-
-    elif data == "watermark_upload":
-        await watermark_upload_start(update, context)
-
-    elif data == "watermark_disable":
-        settings = get_user_settings(context)
-
-        settings["watermark_enabled"] = "0"
-
-        save_settings(settings)
-
-        await query.answer()
-
-        await query.message.reply_text(
-            "✅ تم تعطيل الـWatermark."
-        )
-
-    elif data.startswith("outline_"):
-        value = data.split("_", 1)[1]
-
-        settings = get_user_settings(context)
-
-        settings["subtitle_outline"] = value
-
-        save_settings(settings)
-
-        await query.answer()
-
-        await query.message.reply_text(
-            "✅ تم حفظ إعداد الحواف."
-        )
-
-    elif data.startswith("box_"):
-        value = data.split("_", 1)[1]
-
-        settings = get_user_settings(context)
-
-        settings["subtitle_box"] = value
-
-        save_settings(settings)
-
-        await query.answer()
-
-        await query.message.reply_text(
-            "✅ تم حفظ إعداد الصندوق."
-        )
-
-    elif data == "back":
-        await query.answer()
-
-        await query.message.reply_text(
-            "🎬 القائمة الرئيسية:",
+        await query.edit_message_text(
+            "🎬 القائمة الرئيسية\n\n"
+            "اختار الوظيفة المطلوبة:",
             reply_markup=main_menu()
         )
 
+        return
+
+    # -------------------------
+    # Download
+    # -------------------------
+
+    if data == "download":
+        context.user_data.clear()
+        context.user_data["mode"] = "download"
+
+        await query.edit_message_text(
+            "🔗 ابعت الآن رابط الفيديو المباشر."
+        )
+
+        return
+
+    # -------------------------
+    # Convert
+    # -------------------------
+
+    if data == "convert":
+        context.user_data.clear()
+        context.user_data["mode"] = "convert"
+
+        await query.edit_message_text(
+            "🎬 ابعت رابط الفيديو."
+        )
+
+        return
+
+    # -------------------------
+    # OCR
+    # -------------------------
+
+    if data == "ocr":
+        context.user_data.clear()
+        context.user_data["mode"] = "ocr"
+
+        await query.edit_message_text(
+            "👁️ كلام الشاشة → SRT\n\n"
+            "🔗 ابعت الآن رابط الفيديو المباشر."
+        )
+
+        return
+
+    # -------------------------
+    # Resolution
+    # -------------------------
+
+    if data.startswith("res_"):
+        resolution = data.replace(
+            "res_",
+            "",
+            1
+        )
+
+        video_url = context.user_data.get(
+            "video_url"
+        )
+
+        if not video_url:
+            await query.edit_message_text(
+                "❌ لم يتم العثور على رابط الفيديو.\n\n"
+                "ابدأ من جديد من القائمة."
+            )
+
+            return
+
+        await query.edit_message_text(
+            f"✅ تم اختيار الدقة: {resolution}\n\n"
+            "🚀 جاري تشغيل GitHub لمعالجة الفيديو..."
+        )
+
+        response, error = dispatch_workflow({
+            "video_url": video_url,
+            "subtitle_url": "",
+            "resolution": resolution,
+            "chat_id": update.effective_chat.id,
+            "operation": "video"
+        })
+
+        if error:
+            await query.message.reply_text(
+                "❌ حدث خطأ أثناء تشغيل GitHub:\n\n"
+                f"{error}"
+            )
+
+            return
+
+        if github_success(response):
+            await query.message.reply_text(
+                "✅ بدأ تحميل الفيديو.\n\n"
+                "📥 GitHub يقوم الآن بمعالجة الفيديو.\n"
+                "📤 عند الانتهاء سيصل الناتج هنا."
+            )
+
+        else:
+            await query.message.reply_text(
+                "❌ فشل تشغيل GitHub.\n\n"
+                f"كود الخطأ: {response.status_code}\n"
+                f"{github_error_text(response)}"
+            )
+
+        return
+
+    # -------------------------
+    # Subtitle
+    # -------------------------
+
+    if data == "subtitle":
+        context.user_data["mode"] = "subtitle"
+
+        await query.edit_message_text(
+            "📝 إعدادات حرق الترجمة\n\n"
+            "⚙️ اختار الإعداد الذي تريد تغييره:",
+            reply_markup=subtitle_menu()
+        )
+
+        return
+
+    # -------------------------
+    # Font
+    # -------------------------
+
+    if data == "burn_font":
+        context.user_data["waiting_for_font"] = True
+
+        await query.edit_message_text(
+            "🔤 إعداد الخط\n\n"
+            "📎 ابعت الآن ملف الخط TTF أو OTF أو RAR."
+        )
+
+        return
+
+    # -------------------------
+    # Font size
+    # -------------------------
+
+    if data == "burn_size":
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    "20",
+                    callback_data="burn_size_20"
+                ),
+                InlineKeyboardButton(
+                    "24",
+                    callback_data="burn_size_24"
+                ),
+                InlineKeyboardButton(
+                    "26",
+                    callback_data="burn_size_26"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "28",
+                    callback_data="burn_size_28"
+                ),
+                InlineKeyboardButton(
+                    "32",
+                    callback_data="burn_size_32"
+                ),
+                InlineKeyboardButton(
+                    "36",
+                    callback_data="burn_size_36"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "40",
+                    callback_data="burn_size_40"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "⬅️ رجوع",
+                    callback_data="subtitle"
+                )
+            ]
+        ]
+
+        await query.edit_message_text(
+            "🔠 حجم الخط\n\n"
+            "اختار حجم الخط:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+        return
+
+    if data.startswith("burn_size_"):
+        size = data.replace(
+            "burn_size_",
+            "",
+            1
+        )
+
+        settings = load_settings()
+        settings["font_size"] = size
+        save_settings(settings)
+
+        await query.answer(
+            f"✅ تم حفظ حجم {size}"
+        )
+
+        await query.edit_message_text(
+            f"🔠 تم حفظ حجم الخط: {size}",
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton(
+                        "⬅️ رجوع",
+                        callback_data="subtitle"
+                    )
+                ]
+            ])
+        )
+
+        return
+
+    # -------------------------
+    # Font color
+    # -------------------------
+
+    if data == "burn_color":
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    "⚪ أبيض",
+                    callback_data="burn_color_white"
+                ),
+                InlineKeyboardButton(
+                    "🟡 أصفر",
+                    callback_data="burn_color_yellow"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🔵 سماوي",
+                    callback_data="burn_color_cyan"
+                ),
+                InlineKeyboardButton(
+                    "🟢 أخضر",
+                    callback_data="burn_color_green"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🔴 أحمر",
+                    callback_data="burn_color_red"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "⬅️ رجوع",
+                    callback_data="subtitle"
+                )
+            ]
+        ]
+
+        await query.edit_message_text(
+            "🎨 لون الترجمة\n\n"
+            "اختار لون الترجمة:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+        return
+
+    if data.startswith("burn_color_"):
+        color = data.replace(
+            "burn_color_",
+            "",
+            1
+        )
+
+        settings = load_settings()
+        settings["font_color"] = color
+        save_settings(settings)
+
+        await query.answer(
+            "✅ تم حفظ لون الترجمة"
+        )
+
+        await query.edit_message_text(
+            f"🎨 تم حفظ لون الترجمة: {color}",
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton(
+                        "⬅️ رجوع",
+                        callback_data="subtitle"
+                    )
+                ]
+            ])
+        )
+
+        return
+
+    # -------------------------
+    # Subtitle box
+    # -------------------------
+
+    if data == "burn_box":
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    "⬛ تشغيل البوكس",
+                    callback_data="burn_box_on"
+                ),
+                InlineKeyboardButton(
+                    "⬜ إيقاف البوكس",
+                    callback_data="burn_box_off"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "⬅️ رجوع",
+                    callback_data="subtitle"
+                )
+            ]
+        ]
+
+        await query.edit_message_text(
+            "⬛ البوكس\n\n"
+            "البوكس يظهر خلف نص SRT فقط "
+            "ويختفي مع اختفاء السطر.",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+        return
+
+    if data in (
+        "burn_box_on",
+        "burn_box_off"
+    ):
+        box = (
+            "on"
+            if data == "burn_box_on"
+            else "off"
+        )
+
+        settings = load_settings()
+        settings["subtitle_box"] = box
+        save_settings(settings)
+
+        await query.answer(
+            "✅ تم حفظ إعداد البوكس"
+        )
+
+        await query.edit_message_text(
+            f"⬛ البوكس: "
+            f"{'تشغيل' if box == 'on' else 'إيقاف'}",
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton(
+                        "⬅️ رجوع",
+                        callback_data="subtitle"
+                    )
+                ]
+            ])
+        )
+
+        return
+
+    # -------------------------
+    # Outline
+    # -------------------------
+
+    if data == "burn_outline":
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    "بدون حواف",
+                    callback_data="burn_outline_0"
+                ),
+                InlineKeyboardButton(
+                    "0.5",
+                    callback_data="burn_outline_0.5"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "1",
+                    callback_data="burn_outline_1"
+                ),
+                InlineKeyboardButton(
+                    "2",
+                    callback_data="burn_outline_2"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "⬅️ رجوع",
+                    callback_data="subtitle"
+                )
+            ]
+        ]
+
+        await query.edit_message_text(
+            "▫️ حواف الترجمة\n\n"
+            "اختار سمك الحواف:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+        return
+
+    if data.startswith("burn_outline_"):
+        outline = data.replace(
+            "burn_outline_",
+            "",
+            1
+        )
+
+        settings = load_settings()
+        settings["subtitle_outline"] = outline
+        save_settings(settings)
+
+        await query.answer(
+            "✅ تم حفظ الحواف"
+        )
+
+        await query.edit_message_text(
+            f"▫️ تم حفظ الحواف: {outline}",
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton(
+                        "⬅️ رجوع",
+                        callback_data="subtitle"
+                    )
+                ]
+            ])
+        )
+
+        return
+
+    # -------------------------
+    # Watermark
+    # -------------------------
+
+    if data == "burn_watermark":
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    "📎 رفع/تغيير العلامة",
+                    callback_data="wm_upload"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "📍 الموضع والحجم",
+                    callback_data="watermark_settings"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "⬅️ رجوع",
+                    callback_data="subtitle"
+                )
+            ]
+        ]
+
+        await query.edit_message_text(
+            "🖼️ إعدادات العلامة المائية\n\n"
+            "📎 يمكنك رفع أو تغيير العلامة المائية.\n"
+            "📍 ويمكنك تحديد موضعها وحجمها.",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+        return
+
+    if data == "wm_upload":
+        context.user_data["waiting_for_watermark"] = True
+
+        await query.edit_message_text(
+            "📎 أرسل الآن ملف العلامة المائية.\n\n"
+            "المسموح:\n"
+            "PNG / JPG / JPEG / WEBP / RAR\n\n"
+            "⚠️ أرسل PNG كـ «ملف» للحفاظ على الشفافية."
+        )
+
+        return
+
+    if data == "watermark_settings":
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    "↖️ أعلى اليسار",
+                    callback_data="wm_pos_top_left"
+                ),
+                InlineKeyboardButton(
+                    "↗️ أعلى اليمين",
+                    callback_data="wm_pos_top_right"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "↙️ أسفل اليسار",
+                    callback_data="wm_pos_bottom_left"
+                ),
+                InlineKeyboardButton(
+                    "↘️ أسفل اليمين",
+                    callback_data="wm_pos_bottom_right"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "📏 الحجم",
+                    callback_data="wm_size"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🟢 تشغيل",
+                    callback_data="wm_enable"
+                ),
+                InlineKeyboardButton(
+                    "🔴 إيقاف",
+                    callback_data="wm_disable"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "⬅️ رجوع",
+                    callback_data="burn_watermark"
+                )
+            ]
+        ]
+
+        await query.edit_message_text(
+            "📍 إعدادات العلامة المائية\n\n"
+            "اختر الموضع أو الحجم أو تشغيل/إيقاف العلامة.",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+        return
+
+    if data in (
+        "wm_enable",
+        "wm_disable"
+    ):
+        enabled = data == "wm_enable"
+
+        settings = load_settings()
+        settings["watermark_enabled"] = enabled
+        save_settings(settings)
+
+        await query.edit_message_text(
+            "🖼️ العلامة المائية\n\n"
+            + (
+                "🟢 الحالة: تشغيل"
+                if enabled
+                else "🔴 الحالة: إيقاف"
+            ),
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton(
+                        "⬅️ رجوع",
+                        callback_data="watermark_settings"
+                    )
+                ]
+            ])
+        )
+
+        return
+
+    if data.startswith("wm_pos_"):
+        position = data.replace(
+            "wm_pos_",
+            "",
+            1
+        )
+
+        settings = load_settings()
+        settings["watermark_position"] = position
+        save_settings(settings)
+
+        await query.answer(
+            "✅ تم حفظ الموضع"
+        )
+
+        await query.edit_message_text(
+            "✅ تم حفظ موضع العلامة المائية.",
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton(
+                        "⬅️ رجوع",
+                        callback_data="watermark_settings"
+                    )
+                ]
+            ])
+        )
+
+        return
+
+    if data == "wm_size":
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    "10%",
+                    callback_data="wm_size_10"
+                ),
+                InlineKeyboardButton(
+                    "15%",
+                    callback_data="wm_size_15"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "20%",
+                    callback_data="wm_size_20"
+                ),
+                InlineKeyboardButton(
+                    "25%",
+                    callback_data="wm_size_25"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "30%",
+                    callback_data="wm_size_30"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "⬅️ رجوع",
+                    callback_data="watermark_settings"
+                )
+            ]
+        ]
+
+        await query.edit_message_text(
+            "📏 اختر حجم العلامة المائية:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+        return
+
+    if data.startswith("wm_size_"):
+        size = data.replace(
+            "wm_size_",
+            "",
+            1
+        )
+
+        settings = load_settings()
+        settings["watermark_size"] = size
+        save_settings(settings)
+
+        await query.answer(
+            "✅ تم حفظ الحجم"
+        )
+
+        await query.edit_message_text(
+            f"✅ تم حفظ حجم العلامة المائية: {size}%",
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton(
+                        "⬅️ رجوع",
+                        callback_data="watermark_settings"
+                    )
+                ]
+            ])
+        )
+
+        return
+
+    # -------------------------
+    # Start subtitle burn
+    # -------------------------
+
+    if data == "burn_start":
+        if not context.user_data.get(
+            "video_received"
+        ):
+            await query.answer(
+                "❌ الفيديو غير محفوظ في الجلسة الحالية.",
+                show_alert=True
+            )
+            return
+
+        if not context.user_data.get(
+            "subtitle_received"
+        ):
+            await query.answer(
+                "❌ الترجمة غير محفوظة في الجلسة الحالية.",
+                show_alert=True
+            )
+            return
+
+        video_message_id = context.user_data.get(
+            "video_message_id"
+        )
+
+        subtitle_message_id = context.user_data.get(
+            "subtitle_message_id"
+        )
+
+        subtitle_type = context.user_data.get(
+            "subtitle_type",
+            "srt"
+        )
+
+        if not video_message_id or not subtitle_message_id:
+            await query.answer(
+                "❌ لم يتم حفظ رسالة الفيديو أو الترجمة.",
+                show_alert=True
+            )
+            return
+
+        settings = load_settings()
+
+        watermark_enabled = bool(
+            settings.get(
+                "watermark_enabled",
+                False
+            )
+        )
+
+        await query.answer(
+            "⏳ جاري التشغيل..."
+        )
+
+        await query.edit_message_text(
+            "🎬 جاري تجهيز عملية حرق الترجمة...\n\n"
+            "🚀 سيتم تشغيل GitHub لمعالجة الفيلم."
+        )
+
+        # IMPORTANT:
+        # These are ONLY the inputs defined
+        # in the current process.yml.
+        inputs = {
+            "chat_id": str(
+                update.effective_chat.id
+            ),
+
+            "video_message_id": str(
+                video_message_id
+            ),
+
+            "subtitle_message_id": str(
+                subtitle_message_id
+            ),
+
+            "subtitle_type": str(
+                subtitle_type
+            ),
+
+            "font_message_id": str(
+                settings.get(
+                    "font_message_id",
+                    ""
+                )
+            ),
+
+            "font_size": str(
+                settings.get(
+                    "font_size",
+                    "26"
+                )
+            ),
+
+            "font_color": str(
+                settings.get(
+                    "font_color",
+                    "white"
+                )
+            ),
+
+            "subtitle_outline": str(
+                settings.get(
+                    "subtitle_outline",
+                    "0.5"
+                )
+            ),
+
+            "subtitle_box": str(
+                settings.get(
+                    "subtitle_box",
+                    "off"
+                )
+            ),
+
+            "watermark_message_id": str(
+                settings.get(
+                    "watermark_message_id",
+                    ""
+                )
+                if watermark_enabled
+                else ""
+            ),
+
+            "watermark_enabled": str(
+                watermark_enabled
+            ).lower(),
+
+            "watermark_position": str(
+                settings.get(
+                    "watermark_position",
+                    "top_left"
+                )
+            ),
+
+            "watermark_size": str(
+                settings.get(
+                    "watermark_size",
+                    "20"
+                )
+            ),
+        }
+
+        response, error = dispatch_workflow(
+            inputs
+        )
+
+        if error:
+            await query.message.reply_text(
+                "❌ حدث خطأ أثناء تشغيل GitHub:\n\n"
+                f"{error}"
+            )
+            return
+
+        if github_success(response):
+            await query.message.reply_text(
+                "✅ تم تشغيل GitHub بنجاح.\n\n"
+                "🎬 جاري حرق الترجمة بالإعدادات المحفوظة.\n"
+                "📤 سيصل الفيديو هنا بعد الانتهاء."
+            )
+
+        else:
+            await query.message.reply_text(
+                "❌ فشل تشغيل GitHub.\n\n"
+                f"كود الخطأ: {response.status_code}\n"
+                f"{github_error_text(response)}"
+            )
+
+        return
+
+    # -------------------------
+    # Other existing functions
+    # -------------------------
+
+    if data in (
+        "audio",
+        "extract",
+        "file_link"
+    ):
+        await query.edit_message_text(
+            "🔊 الميزة هتتضاف في الخطوة القادمة.",
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton(
+                        "⬅️ القائمة الرئيسية",
+                        callback_data="main_menu"
+                    )
+                ]
+            ])
+        )
+
+        return
+
+    if data == "watermark":
+        await query.edit_message_text(
+            "🖼️ إعداد العلامة المائية موجود داخل "
+            "إعدادات حرق الترجمة.",
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton(
+                        "📝 إعدادات حرق الترجمة",
+                        callback_data="subtitle"
+                    )
+                ]
+            ])
+        )
+
+        return
+
+
+# =========================
+# TEXT
+# =========================
+
+async def receive_text(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+    text = (
+        update.message.text or ""
+    ).strip()
+
+    mode = context.user_data.get(
+        "mode"
+    )
+
+    if mode == "ocr":
+        if not (
+            text.startswith("http://")
+            or text.startswith("https://")
+        ):
+            await update.message.reply_text(
+                "❌ الرابط غير صحيح.\n\n"
+                "ابعت رابط الفيديو المباشر."
+            )
+            return
+
+        if not GH_TOKEN:
+            await update.message.reply_text(
+                "❌ GH_TOKEN غير موجود."
+            )
+            return
+
+        await update.message.reply_text(
+            "⏳ تم استلام الرابط.\n\n"
+            "👁️ جاري تشغيل OCR..."
+        )
+
+        response, error = dispatch_workflow({
+            "video_url": text,
+            "subtitle_url": "",
+            "resolution": "same",
+            "chat_id": update.effective_chat.id,
+            "operation": "video_ocr"
+        })
+
+        if error:
+            await update.message.reply_text(
+                f"❌ حدث خطأ:\n\n{error}"
+            )
+            return
+
+        if github_success(response):
+            await update.message.reply_text(
+                "✅ بدأ OCR.\n\n"
+                "📤 عند الانتهاء سيصل ملف SRT هنا."
+            )
+
+        else:
+            await update.message.reply_text(
+                "❌ فشل تشغيل GitHub.\n\n"
+                f"كود الخطأ: {response.status_code}\n"
+                f"{github_error_text(response)}"
+            )
+
+        return
+
+    if mode not in (
+        "download",
+        "convert"
+    ):
+        await update.message.reply_text(
+            "اختار وظيفة من القائمة أولًا:",
+            reply_markup=main_menu()
+        )
+        return
+
+    if not (
+        text.startswith("http://")
+        or text.startswith("https://")
+    ):
+        await update.message.reply_text(
+            "❌ الرابط غير صحيح.\n\n"
+            "ابعت رابط الفيديو المباشر."
+        )
+        return
+
+    context.user_data["video_url"] = text
+
+    await update.message.reply_text(
+        "✅ تم استلام الرابط.\n\n"
+        "🎬 اختار الدقة المطلوبة:",
+        reply_markup=resolution_menu()
+    )
+
+
+# =========================
+# VIDEO
+# =========================
+
+async def receive_video(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+    mode = context.user_data.get(
+        "mode"
+    )
+
+    if mode == "subtitle":
+        context.user_data[
+            "video_message_id"
+        ] = update.message.message_id
+
+        context.user_data[
+            "video_message_date"
+        ] = update.message.date.isoformat()
+
+        context.user_data[
+            "video_received"
+        ] = True
+
+        await update.message.reply_text(
+            "✅ تم استلام الفيديو.\n\n"
+            "📝 الآن ابعت ملف الترجمة "
+            "SRT أو ASS أو SSA."
+        )
+
+        return
+
+    if mode not in (
+        "download",
+        "convert",
+        "ocr"
+    ):
+        await update.message.reply_text(
+            "اختار وظيفة من القائمة أولًا:",
+            reply_markup=main_menu()
+        )
+        return
+
+    if not GH_TOKEN:
+        await update.message.reply_text(
+            "❌ GH_TOKEN غير موجود."
+        )
+        return
+
+    operation = (
+        "video_ocr"
+        if mode == "ocr"
+        else "video"
+    )
+
+    await update.message.reply_text(
+        "⏳ تم استلام الفيديو.\n\n"
+        "🚀 جاري تشغيل GitHub لمعالجة الفيديو..."
+    )
+
+    response, error = dispatch_workflow({
+        "video_url": "",
+        "subtitle_url": "",
+        "resolution": "same",
+        "chat_id": update.effective_chat.id,
+        "telegram_message_id": update.message.message_id,
+        "telegram_message_date": update.message.date.isoformat(),
+        "operation": operation
+    })
+
+    if error:
+        await update.message.reply_text(
+            f"❌ حدث خطأ أثناء تشغيل GitHub:\n\n"
+            f"{error}"
+        )
+        return
+
+    if github_success(response):
+        await update.message.reply_text(
+            "✅ بدأ GitHub معالجة الفيديو.\n\n"
+            "📥 سيتم تحميل الفيديو من تيليجرام.\n"
+            "📤 وبعد الانتهاء سيصل الناتج هنا."
+        )
+
     else:
-        await query.answer()
+        await update.message.reply_text(
+            "❌ فشل تشغيل GitHub.\n\n"
+            f"كود الخطأ: {response.status_code}\n"
+            f"{github_error_text(response)}"
+        )
+
+
+# =========================
+# DOCUMENT
+# =========================
+
+async def receive_document(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+    mode = context.user_data.get(
+        "mode"
+    )
+
+    document = update.message.document
+
+    if not document:
+        return
+
+    file_name = document.file_name or ""
+    lower_name = file_name.lower()
+
+    video_extensions = (
+        ".mp4",
+        ".mkv",
+        ".avi",
+        ".mov",
+        ".webm",
+        ".m4v",
+        ".ts",
+        ".mts",
+        ".m2ts",
+        ".flv",
+        ".wmv",
+        ".3gp",
+        ".mp3",
+        ".wav",
+        ".m4a",
+        ".aac",
+        ".flac",
+        ".ogg",
+        ".opus"
+    )
+
+    # -------------------------
+    # Video/audio file
+    # -------------------------
+
+    if lower_name.endswith(
+        video_extensions
+    ):
+        if not GH_TOKEN:
+            await update.message.reply_text(
+                "❌ GH_TOKEN غير موجود."
+            )
+            return
+
+        context.user_data[
+            "video_message_id"
+        ] = update.message.message_id
+
+        context.user_data[
+            "video_message_date"
+        ] = update.message.date.isoformat()
+
+        context.user_data[
+            "video_received"
+        ] = True
+
+        if mode == "subtitle":
+            await update.message.reply_text(
+                "✅ تم استلام الفيديو (كمستند).\n\n"
+                "📝 الآن ابعت ملف الترجمة "
+                "SRT أو ASS أو SSA."
+            )
+            return
+
+        if mode not in (
+            "download",
+            "convert",
+            "ocr"
+        ):
+            await update.message.reply_text(
+                "اختار وظيفة من القائمة أولًا:",
+                reply_markup=main_menu()
+            )
+            return
+
+        operation = (
+            "video_ocr"
+            if mode == "ocr"
+            else "video"
+        )
+
+        await update.message.reply_text(
+            "⏳ تم استلام ملف الفيديو.\n"
+            "جاري إرساله إلى GitHub..."
+        )
+
+        response, error = dispatch_workflow({
+            "video_url": "",
+            "subtitle_url": "",
+            "resolution": "same",
+            "chat_id": update.effective_chat.id,
+            "telegram_message_id": update.message.message_id,
+            "telegram_message_date": update.message.date.isoformat(),
+            "operation": operation
+        })
+
+        if error:
+            await update.message.reply_text(
+                f"❌ حدث خطأ:\n\n{error}"
+            )
+            return
+
+        if github_success(response):
+            await update.message.reply_text(
+                "✅ بدأ GitHub معالجة الملف.\n"
+                "سيصل الناتج هنا عند الانتهاء."
+            )
+
+        else:
+            await update.message.reply_text(
+                "❌ فشل تشغيل GitHub.\n\n"
+                f"كود الخطأ: {response.status_code}\n"
+                f"{github_error_text(response)}"
+            )
+
+        return
+
+    # -------------------------
+    # Watermark
+    # -------------------------
+
+    if context.user_data.get(
+        "waiting_for_watermark"
+    ):
+        if not lower_name.endswith(
+            (
+                ".png",
+                ".jpg",
+                ".jpeg",
+                ".webp",
+                ".rar"
+            )
+        ):
+            await update.message.reply_text(
+                "❌ ابعت صورة بصيغة PNG أو JPG أو WEBP، "
+                "أو ملف RAR."
+            )
+            return
+
+        settings = load_settings()
+
+        settings[
+            "watermark_file_id"
+        ] = document.file_id
+
+        settings[
+            "watermark_file_name"
+        ] = file_name
+
+        settings[
+            "watermark_message_id"
+        ] = update.message.message_id
+
+        settings[
+            "watermark_message_date"
+        ] = update.message.date.isoformat()
+
+        settings[
+            "watermark_position"
+        ] = settings.get(
+            "watermark_position",
+            "top_left"
+        )
+
+        settings[
+            "watermark_size"
+        ] = settings.get(
+            "watermark_size",
+            "20"
+        )
+
+        settings[
+            "watermark_enabled"
+        ] = True
+
+        save_settings(settings)
+
+        context.user_data[
+            "waiting_for_watermark"
+        ] = False
+
+        await update.message.reply_text(
+            "✅ تم حفظ العلامة المائية بنجاح.\n\n"
+            f"🖼️ الملف: {file_name}\n"
+            "♻️ سيُستخدم تلقائيًا في عمليات الحرق القادمة."
+        )
+
+        return
+
+    # -------------------------
+    # Font
+    # -------------------------
+
+    if context.user_data.get(
+        "waiting_for_font"
+    ):
+        if not lower_name.endswith(
+            (
+                ".ttf",
+                ".otf",
+                ".rar"
+            )
+        ):
+            await update.message.reply_text(
+                "❌ ابعت ملف الخط بصيغة TTF أو OTF أو RAR."
+            )
+            return
+
+        settings = load_settings()
+
+        settings[
+            "font_file_id"
+        ] = document.file_id
+
+        settings[
+            "font_file_name"
+        ] = file_name
+
+        settings[
+            "font_message_id"
+        ] = update.message.message_id
+
+        settings[
+            "font_message_date"
+        ] = update.message.date.isoformat()
+
+        save_settings(settings)
+
+        context.user_data[
+            "waiting_for_font"
+        ] = False
+
+        await update.message.reply_text(
+            "✅ تم حفظ ملف الخط بنجاح.\n\n"
+            f"🔤 الملف: {file_name}\n"
+            "♻️ سيُستخدم تلقائيًا في عمليات الحرق القادمة."
+        )
+
+        return
+
+    # -------------------------
+    # Subtitle
+    # -------------------------
+
+    if mode == "subtitle":
+        if not lower_name.endswith(
+            (
+                ".srt",
+                ".ass",
+                ".ssa"
+            )
+        ):
+            await update.message.reply_text(
+                "❌ ابعت ملف ترجمة بصيغة SRT أو ASS أو SSA."
+            )
+            return
+
+        context.user_data[
+            "subtitle_message_id"
+        ] = update.message.message_id
+
+        context.user_data[
+            "subtitle_message_date"
+        ] = update.message.date.isoformat()
+
+        context.user_data[
+            "subtitle_received"
+        ] = True
+
+        if lower_name.endswith(".ass"):
+            subtitle_type = "ass"
+
+        elif lower_name.endswith(".ssa"):
+            subtitle_type = "ssa"
+
+        else:
+            subtitle_type = "srt"
+
+        context.user_data[
+            "subtitle_type"
+        ] = subtitle_type
+
+        await update.message.reply_text(
+            "✅ تم استلام ملف الترجمة.\n\n"
+            "🎬 اضغط «ابدأ الحرق» من قائمة إعدادات "
+            "حرق الترجمة عندما تكون جاهزًا.",
+            reply_markup=subtitle_menu()
+        )
+
+        return
+
+    await update.message.reply_text(
+        "اختار وظيفة من القائمة أولًا:",
+        reply_markup=main_menu()
+    )
 
 
 # =========================
@@ -889,14 +1707,14 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     if not BOT_TOKEN:
-        raise RuntimeError(
-            "BOT_TOKEN غير موجود في متغيرات البيئة."
+        print(
+            "❌ BOT_TOKEN غير موجود."
         )
+        return
 
     if not GH_TOKEN:
         print(
-            "⚠️ تحذير: GH_TOKEN غير موجود. "
-            "البوت سيعمل لكن تشغيل GitHub لن يعمل."
+            "⚠️ تحذير: GH_TOKEN غير موجود."
         )
 
     app = (
@@ -905,7 +1723,6 @@ def main():
         .build()
     )
 
-    # Commands
     app.add_handler(
         CommandHandler(
             "start",
@@ -913,52 +1730,38 @@ def main():
         )
     )
 
-    # Buttons
     app.add_handler(
         CallbackQueryHandler(
-            callback_handler
+            menu_button
         )
     )
 
-    # Videos
-    app.add_handler(
-        MessageHandler(
-            filters.VIDEO,
-            handle_video
-        )
-    )
-
-    # Documents
-    # Router واحد حتى لا يمنع Handler سابق
-    # وصول الرسالة إلى المعالج الصحيح.
-    app.add_handler(
-        MessageHandler(
-            filters.Document.ALL,
-            handle_document
-        )
-    )
-
-    # Photos
-    app.add_handler(
-        MessageHandler(
-            filters.PHOTO,
-            handle_photo
-        )
-    )
-
-    # Text
     app.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND,
-            handle_settings_text
+            receive_text
         )
     )
 
-    print("🤖 البوت يعمل...")
-
-    app.run_polling(
-        drop_pending_updates=True
+    app.add_handler(
+        MessageHandler(
+            filters.VIDEO,
+            receive_video
+        )
     )
+
+    app.add_handler(
+        MessageHandler(
+            filters.Document.ALL,
+            receive_document
+        )
+    )
+
+    print(
+        "🤖 البوت يعمل..."
+    )
+
+    app.run_polling()
 
 
 if __name__ == "__main__":
