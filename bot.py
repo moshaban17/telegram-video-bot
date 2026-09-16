@@ -179,7 +179,6 @@ async def receive_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if error: await update.message.reply_text(f"❌ حدث خطأ أثناء تشغيل GitHub:\n\n{error}"); return
     if github_success(response): await update.message.reply_text("✅ بدأ GitHub معالجة الفيديو.\n\n📥 سيتم تحميل الفيديو من تيليجرام.\n📤 وبعد الانتهاء سيصل الناتج هنا.")
     else: await update.message.reply_text(f"❌ فشل تشغيل GitHub.\n\nكود الخطأ: {response.status_code}\n{github_error_text(response)}"); return
-
 async def receive_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mode = context.user_data.get("mode"); document = update.message.document
     if not document: return
