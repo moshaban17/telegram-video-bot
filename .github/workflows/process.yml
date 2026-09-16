@@ -412,8 +412,8 @@ jobs:
               mkdir -p watermark_extract
               unrar x -o+ "watermark_source" watermark_extract/
 
-              find watermark_extract -type f \\
-                \\( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.webp" \\) \\
+              find watermark_extract -type f \
+                \( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.webp" \) \
                 | head -n 1 | xargs -r -I{} cp "{}" watermark.png
 
             else
