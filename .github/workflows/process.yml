@@ -132,6 +132,9 @@ jobs:
 
     steps:
 
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Install FFmpeg and fonts
         run: |
           sudo apt-get update
