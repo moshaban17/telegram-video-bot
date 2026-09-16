@@ -32,51 +32,36 @@ SETTINGS_FILE = "settings.json"
 # SETTINGS
 # =========================
 
+DEFAULT_SETTINGS = {
+    "font_message_id": "",
+    "font_size": "28",
+    "font_color": "FFFFFF",
+    "subtitle_outline": "1",
+    "subtitle_box": "0",
+    "watermark_message_id": "",
+    "watermark_enabled": "0",
+    "watermark_position": "bottom_right",
+    "watermark_size": "20",
+}
+
+
 def load_settings():
     if not os.path.exists(SETTINGS_FILE):
-        return {
-            "font_message_id": "",
-            "font_size": "28",
-            "font_color": "FFFFFF",
-            "subtitle_outline": "1",
-            "subtitle_box": "0",
-            "watermark_message_id": "",
-            "watermark_enabled": "0",
-            "watermark_position": "bottom_right",
-            "watermark_size": "20",
-        }
+        return DEFAULT_SETTINGS.copy()
 
     try:
         with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
 
-        defaults = {
-            "font_message_id": "",
-            "font_size": "28",
-            "font_color": "FFFFFF",
-            "subtitle_outline": "1",
-            "subtitle_box": "0",
-            "watermark_message_id": "",
-            "watermark_enabled": "0",
-            "watermark_position": "bottom_right",
-            "watermark_size": "20",
-        }
+        settings = DEFAULT_SETTINGS.copy()
 
-        defaults.update(data)
-        return defaults
+        if isinstance(data, dict):
+            settings.update(data)
+
+        return settings
 
     except Exception:
-        return {
-            "font_message_id": "",
-            "font_size": "28",
-            "font_color": "FFFFFF",
-            "subtitle_outline": "1",
-            "subtitle_box": "0",
-            "watermark_message_id": "",
-            "watermark_enabled": "0",
-            "watermark_position": "bottom_right",
-            "watermark_size": "20",
-        }
+        return DEFAULT_SETTINGS.copy()
 
 
 def save_settings(settings):
@@ -105,28 +90,19 @@ def run_github_workflow(inputs):
     if not GH_TOKEN:
         return False, "GH_TOKEN غير موجود."
 
-    # نحول كل القيم إلى نصوص ASCII قدر الإمكان.
-    # أي قيمة عربية لا يجب أن تصل إلى Headers.
     clean_inputs = {}
 
     for key, value in inputs.items():
         if value is None:
             value = ""
 
-        value = str(value)
-
-        # GitHub workflow inputs عندنا كلها أكواد/أرقام.
-        # نضمن أن JSON نفسه سيُرسل UTF-8 وليس كـ Unicode header.
-        clean_inputs[str(key)] = value
+        clean_inputs[str(key)] = str(value)
 
     payload = {
         "ref": GITHUB_REF,
         "inputs": clean_inputs,
     }
 
-    # مهم:
-    # نُنشئ JSON بأنفسنا ثم نحوله إلى UTF-8 bytes.
-    # هذا يمنع مشاكل latin-1 أثناء إرسال البيانات.
     payload_bytes = json.dumps(
         payload,
         ensure_ascii=False,
@@ -148,7 +124,7 @@ def run_github_workflow(inputs):
             timeout=30,
         )
 
-        if response.status_code in (200, 201, 204):
+        if response.status_code in (200, 201, 202, 204):
             return True, ""
 
         try:
@@ -179,7 +155,7 @@ def run_github_workflow(inputs):
 # USER DATA
 # =========================
 
-def user_data(context):
+def get_user_settings(context):
     if "settings" not in context.user_data:
         context.user_data["settings"] = load_settings()
 
@@ -249,12 +225,16 @@ async def subtitle_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    stage = context.user_data.get("stage")
-
-    if stage != "subtitle_video":
+    if context.user_data.get("stage") != "subtitle_video":
         return
 
     message = update.message
+
+    if not message.video and not message.document:
+        await message.reply_text(
+            "❌ أرسل الفيديو كفيديو أو كملف."
+        )
+        return
 
     context.user_data["video_message_id"] = message.message_id
     context.user_data["stage"] = "subtitle_file"
@@ -266,9 +246,7 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_subtitle(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    stage = context.user_data.get("stage")
-
-    if stage != "subtitle_file":
+    if context.user_data.get("stage") != "subtitle_file":
         return
 
     message = update.message
@@ -280,7 +258,6 @@ async def handle_subtitle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     filename = message.document.file_name or ""
-
     lower_name = filename.lower()
 
     if lower_name.endswith(".srt"):
@@ -313,24 +290,42 @@ async def handle_subtitle(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # =========================
 
 async def dispatch_burn(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    settings = user_data(context)
+    settings = get_user_settings(context)
 
     chat_id = update.effective_chat.id
 
+    video_message_id = context.user_data.get(
+        "video_message_id",
+        ""
+    )
+
+    subtitle_message_id = context.user_data.get(
+        "subtitle_message_id",
+        ""
+    )
+
+    subtitle_type = context.user_data.get(
+        "subtitle_type",
+        "srt"
+    )
+
+    watermark_enabled = str(
+        settings.get("watermark_enabled", "0")
+    ).lower()
+
     inputs = {
-        # كلها أسماء Inputs الموجودة في process.yml
         "chat_id": str(chat_id),
 
         "video_message_id": str(
-            context.user_data.get("video_message_id", "")
+            video_message_id
         ),
 
         "subtitle_message_id": str(
-            context.user_data.get("subtitle_message_id", "")
+            subtitle_message_id
         ),
 
         "subtitle_type": str(
-            context.user_data.get("subtitle_type", "srt")
+            subtitle_type
         ),
 
         "font_message_id": str(
@@ -355,18 +350,24 @@ async def dispatch_burn(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         "watermark_message_id": str(
             settings.get("watermark_message_id", "")
+            if watermark_enabled == "1"
+            else ""
         ),
 
-        "watermark_enabled": str(
-            settings.get("watermark_enabled", "0")
-        ),
+        "watermark_enabled": watermark_enabled,
 
         "watermark_position": str(
-            settings.get("watermark_position", "bottom_right")
+            settings.get(
+                "watermark_position",
+                "bottom_right"
+            )
         ),
 
         "watermark_size": str(
-            settings.get("watermark_size", "20")
+            settings.get(
+                "watermark_size",
+                "20"
+            )
         ),
     }
 
@@ -451,7 +452,9 @@ async def handle_font_upload(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
         return
 
-    filename = (message.document.file_name or "").lower()
+    filename = (
+        message.document.file_name or ""
+    ).lower()
 
     if not (
         filename.endswith(".ttf")
@@ -463,8 +466,12 @@ async def handle_font_upload(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
         return
 
-    settings = user_data(context)
-    settings["font_message_id"] = str(message.message_id)
+    settings = get_user_settings(context)
+
+    settings["font_message_id"] = str(
+        message.message_id
+    )
+
     save_settings(settings)
 
     context.user_data["stage"] = None
@@ -587,12 +594,15 @@ async def box_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_settings_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     stage = context.user_data.get("stage")
 
-    if stage not in ("font_size", "font_color"):
+    if stage not in (
+        "font_size",
+        "font_color"
+    ):
         return
 
     text = update.message.text.strip()
 
-    settings = user_data(context)
+    settings = get_user_settings(context)
 
     if stage == "font_size":
         try:
@@ -629,6 +639,7 @@ async def handle_settings_text(update: Update, context: ContextTypes.DEFAULT_TYP
 
         try:
             int(color, 16)
+
         except ValueError:
             await update.message.reply_text(
                 "❌ قيمة اللون غير صحيحة."
@@ -636,6 +647,7 @@ async def handle_settings_text(update: Update, context: ContextTypes.DEFAULT_TYP
             return
 
         settings["font_color"] = color
+
         save_settings(settings)
 
         context.user_data["stage"] = None
@@ -716,10 +728,29 @@ async def handle_watermark_upload(update: Update, context: ContextTypes.DEFAULT_
         )
         return
 
-    settings = user_data(context)
+    if message.document:
+        filename = (
+            message.document.file_name or ""
+        ).lower()
+
+        if not (
+            filename.endswith(".rar")
+            or filename.endswith(".png")
+            or filename.endswith(".jpg")
+            or filename.endswith(".jpeg")
+            or filename.endswith(".webp")
+        ):
+            await message.reply_text(
+                "❌ أرسل صورة أو ملف RAR."
+            )
+            return
+
+    settings = get_user_settings(context)
 
     settings["watermark_enabled"] = "1"
-    settings["watermark_message_id"] = str(message.message_id)
+    settings["watermark_message_id"] = str(
+        message.message_id
+    )
 
     save_settings(settings)
 
@@ -728,6 +759,35 @@ async def handle_watermark_upload(update: Update, context: ContextTypes.DEFAULT_
     await message.reply_text(
         "✅ تم حفظ الـWatermark وتفعيله."
     )
+
+
+# =========================
+# DOCUMENT / PHOTO ROUTER
+# =========================
+
+async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    stage = context.user_data.get("stage")
+
+    if stage == "subtitle_video":
+        await handle_video(update, context)
+        return
+
+    if stage == "subtitle_file":
+        await handle_subtitle(update, context)
+        return
+
+    if stage == "font_upload":
+        await handle_font_upload(update, context)
+        return
+
+    if stage == "watermark_upload":
+        await handle_watermark_upload(update, context)
+        return
+
+
+async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if context.user_data.get("stage") == "watermark_upload":
+        await handle_watermark_upload(update, context)
 
 
 # =========================
@@ -769,11 +829,14 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await watermark_upload_start(update, context)
 
     elif data == "watermark_disable":
-        settings = user_data(context)
+        settings = get_user_settings(context)
+
         settings["watermark_enabled"] = "0"
+
         save_settings(settings)
 
         await query.answer()
+
         await query.message.reply_text(
             "✅ تم تعطيل الـWatermark."
         )
@@ -781,8 +844,10 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith("outline_"):
         value = data.split("_", 1)[1]
 
-        settings = user_data(context)
+        settings = get_user_settings(context)
+
         settings["subtitle_outline"] = value
+
         save_settings(settings)
 
         await query.answer()
@@ -794,8 +859,10 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith("box_"):
         value = data.split("_", 1)[1]
 
-        settings = user_data(context)
+        settings = get_user_settings(context)
+
         settings["subtitle_box"] = value
+
         save_settings(settings)
 
         await query.answer()
@@ -811,6 +878,9 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "🎬 القائمة الرئيسية:",
             reply_markup=main_menu()
         )
+
+    else:
+        await query.answer()
 
 
 # =========================
@@ -837,19 +907,16 @@ def main():
 
     # Commands
     app.add_handler(
-        CommandHandler("start", start)
+        CommandHandler(
+            "start",
+            start
+        )
     )
 
     # Buttons
     app.add_handler(
-        CallbackQueryHandler(callback_handler)
-    )
-
-    # Documents
-    app.add_handler(
-        MessageHandler(
-            filters.Document.ALL,
-            handle_video
+        CallbackQueryHandler(
+            callback_handler
         )
     )
 
@@ -861,26 +928,29 @@ def main():
         )
     )
 
+    # Documents
+    # Router واحد حتى لا يمنع Handler سابق
+    # وصول الرسالة إلى المعالج الصحيح.
+    app.add_handler(
+        MessageHandler(
+            filters.Document.ALL,
+            handle_document
+        )
+    )
+
+    # Photos
+    app.add_handler(
+        MessageHandler(
+            filters.PHOTO,
+            handle_photo
+        )
+    )
+
     # Text
     app.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND,
             handle_settings_text
-        )
-    )
-
-    # Font / watermark documents are handled separately
-    app.add_handler(
-        MessageHandler(
-            filters.Document.ALL,
-            handle_font_upload
-        )
-    )
-
-    app.add_handler(
-        MessageHandler(
-            filters.Document.ALL,
-            handle_watermark_upload
         )
     )
 
