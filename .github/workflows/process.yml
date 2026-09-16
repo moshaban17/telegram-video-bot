@@ -83,6 +83,7 @@ on:
         type: string
         default: "20"
 
+
 jobs:
 
   burn:
@@ -121,6 +122,8 @@ jobs:
           API_HASH: ${{ secrets.API_HASH }}
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
         run: |
+          set -e
+
           test -n "$API_ID" || {
             echo "API_ID is missing"
             exit 1
@@ -163,21 +166,11 @@ jobs:
           from telethon import TelegramClient
 
 
-          API_ID = int(
-              os.environ["API_ID"]
-          )
+          API_ID = int(os.environ["API_ID"])
+          API_HASH = os.environ["API_HASH"]
+          BOT_TOKEN = os.environ["BOT_TOKEN"]
 
-          API_HASH = os.environ[
-              "API_HASH"
-          ]
-
-          BOT_TOKEN = os.environ[
-              "BOT_TOKEN"
-          ]
-
-          CHAT_ID = int(
-              os.environ["CHAT_ID"]
-          )
+          CHAT_ID = int(os.environ["CHAT_ID"])
 
 
           async def download_message(
@@ -185,7 +178,6 @@ jobs:
               message_id,
               filename
           ):
-
               if not message_id:
                   return False
 
@@ -438,6 +430,23 @@ jobs:
           test -s watermark.png
 
 
+      - name: Detect video information
+        run: |
+
+          set -e
+
+          ffprobe \
+            -v error \
+            -show_entries format=duration \
+            -of default=noprint_wrappers=1:nokey=1 \
+            input_video \
+            > duration.txt
+
+          DURATION="$(cat duration.txt)"
+
+          echo "Video duration: $DURATION"
+
+
       - name: Process video
         env:
           SUBTITLE_TYPE: ${{ inputs.subtitle_type }}
@@ -544,9 +553,15 @@ jobs:
 
             SUB_FILTER="ass=subtitle.ass:fontsdir=fonts"
 
-          else
+          elif [ "$SUBTITLE_TYPE" = "ssa" ]; then
 
             SUB_FILTER="ass=subtitle.ssa:fontsdir=fonts"
+
+          else
+
+            echo "Unsupported subtitle type."
+
+            exit 1
 
           fi
 
@@ -630,6 +645,12 @@ jobs:
 
           test -s output.mp4
 
+          ffprobe \
+            -v error \
+            -show_entries format=duration \
+            -of default=noprint_wrappers=1:nokey=1 \
+            output.mp4
+
           ls -lh output.mp4
 
 
@@ -710,5 +731,6 @@ jobs:
           rm -f \
             watermark.png \
             output.mp4 \
+            duration.txt \
             download_media.py \
             send_video.py
