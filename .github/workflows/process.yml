@@ -7,9 +7,10 @@ on:
         description: "Direct video URL"
         required: false
         type: string
+        default: ""
 
       subtitle_url:
-        description: "Direct SRT URL (optional)"
+        description: "Direct subtitle URL (optional)"
         required: false
         type: string
         default: ""
@@ -66,6 +67,7 @@ on:
         required: false
         type: string
         default: ""
+
       font_message_date:
         description: "Telegram font message date"
         required: false
@@ -101,6 +103,7 @@ on:
         required: false
         type: string
         default: ""
+
       watermark_message_date:
         description: "Telegram watermark message date"
         required: false
@@ -125,7 +128,6 @@ on:
         type: string
         default: "false"
 
-
 jobs:
   process:
     runs-on: ubuntu-latest
@@ -138,7 +140,7 @@ jobs:
       - name: Install FFmpeg and fonts
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg wget fonts-noto-core
+          sudo apt-get install -y ffmpeg wget fonts-noto-core fontconfig file
 
       - name: Download video
         env:
@@ -147,14 +149,29 @@ jobs:
           TG_SESSION: ${{ secrets.TG_SESSION }}
           CHAT_ID: ${{ inputs.chat_id }}
           BOT_USERNAME: "@CinmalekHardsubBot"
+          VIDEO_URL: ${{ inputs.video_url }}
           VIDEO_MESSAGE_ID: ${{ inputs.telegram_message_id }}
           VIDEO_MESSAGE_DATE: ${{ inputs.telegram_message_date }}
         run: |
-          python -m pip install "telethon<2" cryptg
+          if [ -n "$VIDEO_URL" ]; then
+            echo "🔗 تحميل الفيديو من الرابط المباشر..."
 
-          cat > download_video.py <<'PYTHON'
+            wget \
+              --continue \
+              --tries=3 \
+              --timeout=60 \
+              -O input.mkv \
+              "$VIDEO_URL"
+
+          else
+            echo "📱 تحميل الفيديو من Telegram..."
+
+            python -m pip install "telethon<2" cryptg
+
+            cat > download_video.py <<'PYTHON'
           import os
           import asyncio
+          from datetime import datetime, timezone
           from telethon import TelegramClient
           from telethon.sessions import StringSession
 
@@ -167,58 +184,115 @@ jobs:
 
               await client.start()
 
-              bot = await client.get_entity(os.environ["BOT_USERNAME"])
-
-              print("🔎 Bot ID:", bot.id)
-              print("🔎 Bot username:", getattr(bot, "username", None))
-              target_date = os.environ.get("VIDEO_MESSAGE_DATE", "").strip()
-
-              print("🔎 Looking for video near date:", target_date)
-
-              if not target_date:
-                  raise RuntimeError("لم يتم إرسال تاريخ رسالة الفيديو من البوت.")
-
-              from datetime import datetime
-
-              target_dt = datetime.fromisoformat(target_date)
-
-              recent = await client.get_messages(bot, limit=50)
-
-              media_messages = [
-                  m for m in recent
-                  if m.media and m.date
-              ]
-
-              if not media_messages:
-                  raise RuntimeError(
-                      f"لم يتم العثور على رسائل Media داخل محادثة البوت {bot.id}."
-                  )
-
-              message = min(
-                  media_messages,
-                  key=lambda m: abs((m.date - target_dt).total_seconds())
+              bot = await client.get_entity(
+                  os.environ["BOT_USERNAME"]
               )
 
-              difference = abs(
-                  (message.date - target_dt).total_seconds()
-              )
+              message = None
 
-              print("🔎 Selected Telegram message ID:", message.id)
-              print("🔎 Selected message date:", message.date)
-              print("🔎 Date difference:", difference, "seconds")
+              message_id = os.environ.get(
+                  "VIDEO_MESSAGE_ID",
+                  ""
+              ).strip()
 
-              if difference > 120:
-                  raise RuntimeError(
-                      f"أقرب رسالة Media بعيدة عن وقت الفيديو "
-                      f"بـ {difference:.1f} ثانية."
+              if message_id:
+                  print(
+                      "🔎 Using exact Telegram message ID:",
+                      message_id
                   )
 
-              print("🔎 Telegram message ID:", message.id)
-              print("🔎 Message media:", message.media)
+                  message = await client.get_messages(
+                      bot,
+                      ids=int(message_id)
+                  )
 
-              if not message.media:
+                  if message and message.media:
+                      print(
+                          "✅ Video found by Message ID:",
+                          message.id
+                      )
+                  else:
+                      message = None
+                      print(
+                          "⚠️ Message ID did not contain usable media."
+                      )
+
+              if message is None:
+                  target_date = os.environ.get(
+                      "VIDEO_MESSAGE_DATE",
+                      ""
+                  ).strip()
+
+                  if not target_date:
+                      raise RuntimeError(
+                          "لم يتم إرسال رابط الفيديو أو بيانات رسالة Telegram."
+                      )
+
+                  target_dt = datetime.fromisoformat(
+                      target_date
+                  )
+
+                  if target_dt.tzinfo is None:
+                      target_dt = target_dt.replace(
+                          tzinfo=timezone.utc
+                      )
+
+                  print(
+                      "🔎 Looking for video near date:",
+                      target_dt
+                  )
+
+                  recent = await client.get_messages(
+                      bot,
+                      limit=100
+                  )
+
+                  media_messages = [
+                      m for m in recent
+                      if m.media and m.date
+                  ]
+
+                  if not media_messages:
+                      raise RuntimeError(
+                          "لم يتم العثور على رسائل Media داخل محادثة البوت."
+                      )
+
+                  message = min(
+                      media_messages,
+                      key=lambda m: abs(
+                          (m.date - target_dt).total_seconds()
+                      )
+                  )
+
+                  difference = abs(
+                      (message.date - target_dt).total_seconds()
+                  )
+
+                  print(
+                      "🔎 Selected Telegram message ID:",
+                      message.id
+                  )
+
+                  print(
+                      "🔎 Selected message date:",
+                      message.date
+                  )
+
+                  print(
+                      "🔎 Date difference:",
+                      difference,
+                      "seconds"
+                  )
+
+                  if difference > 120:
+                      raise RuntimeError(
+                          f"أقرب رسالة Media بعيدة عن وقت الفيديو "
+                          f"بـ {difference:.1f} ثانية."
+                      )
+
+              if not message or not message.media:
                   raise RuntimeError(
-                      f"تم العثور على الرسالة {message.id} لكن لا يوجد Media داخلها."
+                      "تم العثور على الرسالة لكن لا يوجد Media داخلها."
                   )
 
               await client.download_media(
@@ -231,7 +305,16 @@ jobs:
           asyncio.run(main())
           PYTHON
 
-          python download_video.py
+            python download_video.py
+          fi
+
+          if [ ! -s "input.mkv" ]; then
+            echo "❌ فشل تحميل الفيديو أو الملف فارغ."
+            exit 1
+          fi
+
+          echo "✅ تم تحميل الفيديو بنجاح."
+          ls -lh input.mkv
 
       - name: Download subtitle if provided
         env:
@@ -246,11 +329,15 @@ jobs:
           SUBTITLE_URL: ${{ inputs.subtitle_url }}
         run: |
           if [ -n "$SUBTITLE_MESSAGE_ID" ]; then
+
+            echo "📄 تحميل الترجمة من Telegram..."
+
             python -m pip install "telethon<2" cryptg
 
             cat > download_subtitle.py <<'PYTHON'
           import os
           import asyncio
+          from datetime import datetime, timezone
           from telethon import TelegramClient
           from telethon.sessions import StringSession
 
@@ -263,51 +350,123 @@ jobs:
 
               await client.start()
 
-              from datetime import datetime
-
-              target_date = os.environ.get("SUBTITLE_MESSAGE_DATE", "").strip()
-
-              if not target_date:
-                  raise RuntimeError("لم يتم إرسال تاريخ رسالة الترجمة من البوت.")
-
-              target_dt = datetime.fromisoformat(target_date)
-
-              recent = await client.get_messages(
-                  os.environ["BOT_USERNAME"],
-                  limit=50
+              bot = await client.get_entity(
+                  os.environ["BOT_USERNAME"]
               )
 
-              media_messages = [
-                  m for m in recent
-                  if m.media and m.date
-              ]
+              message = None
 
-              if not media_messages:
-                  raise RuntimeError("لم يتم العثور على رسائل Media داخل محادثة البوت.")
+              message_id = os.environ.get(
+                  "SUBTITLE_MESSAGE_ID",
+                  ""
+              ).strip()
 
-              message = min(
-                  media_messages,
-                  key=lambda m: abs((m.date - target_dt).total_seconds())
-              )
-
-              difference = abs(
-                  (message.date - target_dt).total_seconds()
-              )
-
-              print("🔎 Selected subtitle message ID:", message.id)
-              print("🔎 Selected subtitle message date:", message.date)
-              print("🔎 Date difference:", difference, "seconds")
-
-              if difference > 120:
-                  raise RuntimeError(
-                      f"أقرب ملف ترجمة بعيد عن وقت الترجمة "
-                      f"بـ {difference:.1f} ثانية."
+              if message_id:
+                  print(
+                      "🔎 Using exact subtitle Message ID:",
+                      message_id
                   )
 
-              if not message.media:
-                  raise RuntimeError("تم العثور على الرسالة لكن لا يوجد Media داخلها.")
+                  message = await client.get_messages(
+                      bot,
+                      ids=int(message_id)
+                  )
 
-              ext = ".ass" if os.environ["SUBTITLE_TYPE"].lower() in ("ass", "ssa") else ".srt"
+                  if message and message.media:
+                      print(
+                          "✅ Subtitle found by Message ID:",
+                          message.id
+                      )
+                  else:
+                      message = None
+                      print(
+                          "⚠️ Subtitle Message ID did not contain usable media."
+                      )
+
+              if message is None:
+                  target_date = os.environ.get(
+                      "SUBTITLE_MESSAGE_DATE",
+                      ""
+                  ).strip()
+
+                  if not target_date:
+                      raise RuntimeError(
+                          "لم يتم إرسال تاريخ رسالة الترجمة."
+                      )
+
+                  target_dt = datetime.fromisoformat(
+                      target_date
+                  )
+
+                  if target_dt.tzinfo is None:
+                      target_dt = target_dt.replace(
+                          tzinfo=timezone.utc
+                      )
+
+                  recent = await client.get_messages(
+                      bot,
+                      limit=100
+                  )
+
+                  media_messages = [
+                      m for m in recent
+                      if m.media and m.date
+                  ]
+
+                  if not media_messages:
+                      raise RuntimeError(
+                          "لم يتم العثور على رسائل Media داخل محادثة البوت."
+                      )
+
+                  message = min(
+                      media_messages,
+                      key=lambda m: abs(
+                          (m.date - target_dt).total_seconds()
+                      )
+                  )
+
+                  difference = abs(
+                      (message.date - target_dt).total_seconds()
+                  )
+
+                  print(
+                      "🔎 Selected subtitle message ID:",
+                      message.id
+                  )
+
+                  print(
+                      "🔎 Selected subtitle message date:",
+                      message.date
+                  )
+
+                  print(
+                      "🔎 Date difference:",
+                      difference,
+                      "seconds"
+                  )
+
+                  if difference > 120:
+                      raise RuntimeError(
+                          f"أقرب ملف ترجمة بعيد عن وقت الترجمة "
+                          f"بـ {difference:.1f} ثانية."
+                      )
+
+              if not message or not message.media:
+                  raise RuntimeError(
+                      "تم العثور على الرسالة لكن لا يوجد ملف ترجمة."
+                  )
+
+              subtitle_type = os.environ.get(
+                  "SUBTITLE_TYPE",
+                  "srt"
+              ).lower()
+
+              if subtitle_type == "ssa":
+                  ext = ".ssa"
+              elif subtitle_type == "ass":
+                  ext = ".ass"
+              else:
+                  ext = ".srt"
 
               await client.download_media(
                   message,
@@ -322,7 +481,25 @@ jobs:
             python download_subtitle.py
 
           elif [ -n "$SUBTITLE_URL" ]; then
-            wget -O subtitle.srt "$SUBTITLE_URL"
+
+            echo "🔗 تحميل الترجمة من الرابط..."
+
+            wget \
+              --tries=3 \
+              --timeout=60 \
+              -O subtitle.srt \
+              "$SUBTITLE_URL"
+
+          fi
+
+          if [ -f "subtitle.srt" ]; then
+            echo "✅ تم تجهيز SRT."
+          elif [ -f "subtitle.ass" ]; then
+            echo "✅ تم تجهيز ASS."
+          elif [ -f "subtitle.ssa" ]; then
+            echo "✅ تم تجهيز SSA."
+          else
+            echo "ℹ️ لا توجد ترجمة."
           fi
 
       - name: Download watermark if enabled
@@ -336,8 +513,13 @@ jobs:
           WATERMARK_MESSAGE_DATE: ${{ inputs.watermark_message_date }}
           WATERMARK_ENABLED: ${{ inputs.watermark_enabled }}
         run: |
-          if [ "$WATERMARK_ENABLED" = "true" ] && { [ -n "$WATERMARK_MESSAGE_DATE" ] || [ -n "$WATERMARK_MESSAGE_ID" ]; }; then
+          if [ "$WATERMARK_ENABLED" = "true" ] && \
+             { [ -n "$WATERMARK_MESSAGE_ID" ] || [ -n "$WATERMARK_MESSAGE_DATE" ]; }; then
+
+            echo "🖼️ تحميل العلامة المائية..."
+
             python -m pip install "telethon<2" cryptg
+
             python download_watermark.py
           fi
 
@@ -351,34 +533,52 @@ jobs:
           FONT_MESSAGE_ID: ${{ inputs.font_message_id }}
         run: |
           if [ -n "$FONT_MESSAGE_ID" ]; then
+
+            echo "🔤 تحميل الخط..."
+
             python -m pip install "telethon<2" cryptg
+
             python download_font.py
           fi
 
       - name: Prepare font
         run: |
           if [ -f "font_source" ]; then
+
             mkdir -p custom_fonts
 
             if file "font_source" | grep -qi "RAR"; then
+
               sudo apt-get update
               sudo apt-get install -y unrar
-              unrar x -o+ "font_source" custom_fonts/
+
+              unrar x -o+ \
+                "font_source" \
+                custom_fonts/
+
             else
+
               cp "font_source" custom_fonts/
+
             fi
 
             find custom_fonts -type f \
               \( -iname "*.ttf" -o -iname "*.otf" \) \
               | head -n 1 > selected_font.txt
 
-            if [ ! -s selected_font.txt ]; then
+            if [ ! -s "selected_font.txt" ]; then
               echo "❌ لم يتم العثور على TTF أو OTF داخل ملف الخط."
               exit 1
             fi
 
             FONT_PATH="$(cat selected_font.txt)"
-            FONT_NAME="$(fc-scan --format='%{family}' "$FONT_PATH" | head -n 1)"
+
+            FONT_NAME="$(
+              fc-scan \
+                --format='%{family}' \
+                "$FONT_PATH" \
+                | head -n 1
+            )"
 
             if [ -z "$FONT_NAME" ]; then
               echo "❌ تعذر معرفة اسم عائلة الخط."
@@ -386,8 +586,12 @@ jobs:
             fi
 
             mkdir -p "$HOME/.local/share/fonts"
-            cp "$FONT_PATH" "$HOME/.local/share/fonts/"
-            fc-cache -f "$HOME/.local/share/fonts"
+
+            cp "$FONT_PATH" \
+              "$HOME/.local/share/fonts/"
+
+            fc-cache -f \
+              "$HOME/.local/share/fonts"
 
             echo "FONT_FILE=$FONT_PATH" >> "$GITHUB_ENV"
             echo "FONT_NAME=$FONT_NAME" >> "$GITHUB_ENV"
@@ -395,29 +599,43 @@ jobs:
             echo "✅ تم تجهيز الخط: $FONT_PATH"
             echo "🔤 اسم الخط: $FONT_NAME"
 
-            echo "✅ تم تجهيز الخط: $FONT_PATH"
-            echo "🔤 اسم الخط: $FONT_NAME"
           else
+
             echo "ℹ️ لا يوجد خط مخصص، سيتم استخدام الخط الافتراضي."
+
           fi
 
       - name: Prepare watermark
         run: |
           if [ -f "watermark_source" ]; then
+
             file "watermark_source" || true
 
             if file "watermark_source" | grep -qi "RAR"; then
+
               sudo apt-get update
               sudo apt-get install -y unrar
+
               mkdir -p watermark_extract
-              unrar x -o+ "watermark_source" watermark_extract/
+
+              unrar x -o+ \
+                "watermark_source" \
+                watermark_extract/
 
               find watermark_extract -type f \
-                \( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.webp" \) \
-                | head -n 1 | xargs -r -I{} cp "{}" watermark.png
+                \( \
+                  -iname "*.png" \
+                  -o -iname "*.jpg" \
+                  -o -iname "*.jpeg" \
+                  -o -iname "*.webp" \
+                \) \
+                | head -n 1 \
+                | xargs -r -I{} cp "{}" watermark.png
 
             else
+
               cp "watermark_source" watermark.png
+
             fi
 
             if [ ! -f "watermark.png" ]; then
@@ -426,8 +644,11 @@ jobs:
             fi
 
             echo "✅ تم تجهيز العلامة المائية: watermark.png"
+
           else
+
             echo "ℹ️ لا توجد علامة مائية مفعلة."
+
           fi
 
       - name: Set processing settings
@@ -460,118 +681,146 @@ jobs:
       - name: Set resolution
         run: |
           case "${{ inputs.resolution }}" in
+
             "same")
               echo "SCALE_FILTER=null" >> "$GITHUB_ENV"
               ;;
+
             "1080p")
               echo "SCALE_FILTER=scale=-2:1080" >> "$GITHUB_ENV"
               ;;
+
             "720p")
               echo "SCALE_FILTER=scale=-2:720" >> "$GITHUB_ENV"
               ;;
+
             "480p")
               echo "SCALE_FILTER=scale=-2:480" >> "$GITHUB_ENV"
               ;;
+
             "360p")
               echo "SCALE_FILTER=scale=-2:360" >> "$GITHUB_ENV"
               ;;
+
+            *)
+              echo "❌ دقة غير معروفة."
+              exit 1
+              ;;
+
           esac
 
       - name: Process video
         run: |
           FILTERS=""
 
-          # -----------------------------
-          # Subtitle
-          # -----------------------------
-          if [ -f "subtitle.ass" ] || [ -f "subtitle.ssa" ]; then
-            SUBTITLE_FILE="subtitle.ass"
+          if [ -f "subtitle.ass" ]; then
 
-            if [ -f "subtitle.ssa" ]; then
-              SUBTITLE_FILE="subtitle.ssa"
-            fi
+            echo "🎬 ASS detected - preserving original styles"
 
-            echo "🎬 ASS/SSA detected - preserving original styles"
+            FILTERS="subtitles=subtitle.ass"
 
-            FILTERS="subtitles=${SUBTITLE_FILE}"
+          elif [ -f "subtitle.ssa" ]; then
+
+            echo "🎬 SSA detected - preserving original styles"
+
+            FILTERS="subtitles=subtitle.ssa"
 
           elif [ -f "subtitle.srt" ]; then
+
             echo "🎬 SRT detected"
 
             COLOR="&H00FFFFFF"
 
             case "$FONT_COLOR" in
+
               white)
                 COLOR="&H00FFFFFF"
                 ;;
+
               yellow)
                 COLOR="&H0000FFFF"
                 ;;
+
               cyan)
                 COLOR="&H00FFFF00"
                 ;;
+
               green)
                 COLOR="&H0000FF00"
                 ;;
+
               red)
                 COLOR="&H000000FF"
                 ;;
+
+              *)
+                COLOR="&H00FFFFFF"
+                ;;
+
             esac
 
             if [ "$SUBTITLE_BOX" = "on" ]; then
+
               FORCE_STYLE="FontName=${FONT_NAME:-Noto Sans},FontSize=${FONT_SIZE},PrimaryColour=${COLOR},OutlineColour=&H00000000,Outline=0,Shadow=0,BorderStyle=3,BackColour=&H00000000,Alignment=2"
+
             else
+
               FORCE_STYLE="FontName=${FONT_NAME:-Noto Sans},FontSize=${FONT_SIZE},PrimaryColour=${COLOR},OutlineColour=&H00000000,Outline=${SUBTITLE_OUTLINE},Shadow=0,Alignment=2"
+
             fi
 
             FILTERS="subtitles=subtitle.srt:force_style='${FORCE_STYLE}'"
+
           fi
 
-          # -----------------------------
-          # Resolution
-          # -----------------------------
-          if [ -n "$FILTERS" ]; then
-            if [ "$SCALE_FILTER" != "null" ]; then
-              FILTERS="${FILTERS},${SCALE_FILTER}"
-            fi
-          else
-            if [ "$SCALE_FILTER" != "null" ]; then
-              FILTERS="${SCALE_FILTER}"
-            fi
+          if [ -n "$FILTERS" ] && [ "$SCALE_FILTER" != "null" ]; then
+
+            FILTERS="${FILTERS},${SCALE_FILTER}"
+
+          elif [ -z "$FILTERS" ] && [ "$SCALE_FILTER" != "null" ]; then
+
+            FILTERS="$SCALE_FILTER"
+
           fi
 
-          # -----------------------------
-          # Watermark
-          # -----------------------------
-          if [ "$WATERMARK_ENABLED" = "true" ] && [ -f "watermark.png" ]; then
+          if [ "$WATERMARK_ENABLED" = "true" ] && \
+             [ -f "watermark.png" ]; then
 
             echo "🖼️ Adding watermark"
 
-            WM_SCALE="scale=iw*${WATERMARK_SIZE}/100:-1"
+            WM_SIZE="${WATERMARK_SIZE:-20}"
 
             case "$WATERMARK_POSITION" in
+
               top_left)
                 WM_OVERLAY="20:20"
                 ;;
+
               top_right)
                 WM_OVERLAY="main_w-overlay_w-20:20"
                 ;;
+
               bottom_left)
                 WM_OVERLAY="20:main_h-overlay_h-20"
                 ;;
+
               bottom_right)
                 WM_OVERLAY="main_w-overlay_w-20:main_h-overlay_h-20"
                 ;;
+
               *)
                 WM_OVERLAY="20:20"
                 ;;
+
             esac
 
             if [ -n "$FILTERS" ]; then
+
               ffmpeg -y \
                 -i input.mkv \
                 -i watermark.png \
-                -filter_complex "[0:v]${FILTERS}[v0];[1:v]${WM_SCALE}[wm];[v0][wm]overlay=${WM_OVERLAY}[v]" \
+                -filter_complex \
+                "[0:v]${FILTERS}[base];[1:v][base]scale2ref=w=rw*${WM_SIZE}/100:h=-1[wm][video];[video][wm]overlay=${WM_OVERLAY}[v]" \
                 -map "[v]" \
                 -map 0:a? \
                 -c:v libx264 \
@@ -580,11 +829,14 @@ jobs:
                 -c:a copy \
                 -movflags +faststart \
                 output.mp4
+
             else
+
               ffmpeg -y \
                 -i input.mkv \
                 -i watermark.png \
-                -filter_complex "[1:v]${WM_SCALE}[wm];[0:v][wm]overlay=${WM_OVERLAY}[v]" \
+                -filter_complex \
+                "[1:v][0:v]scale2ref=w=rw*${WM_SIZE}/100:h=-1[wm][video];[video][wm]overlay=${WM_OVERLAY}[v]" \
                 -map "[v]" \
                 -map 0:a? \
                 -c:v libx264 \
@@ -593,6 +845,7 @@ jobs:
                 -c:a copy \
                 -movflags +faststart \
                 output.mp4
+
             fi
 
           else
@@ -600,6 +853,7 @@ jobs:
             echo "🎬 Processing without watermark"
 
             if [ -n "$FILTERS" ]; then
+
               ffmpeg -y \
                 -i input.mkv \
                 -vf "$FILTERS" \
@@ -611,10 +865,11 @@ jobs:
                 -c:a copy \
                 -movflags +faststart \
                 output.mp4
+
             else
+
               ffmpeg -y \
                 -i input.mkv \
-                -vf "$FILTERS" \
                 -map 0:v:0 \
                 -map 0:a? \
                 -c:v libx264 \
@@ -623,9 +878,18 @@ jobs:
                 -c:a copy \
                 -movflags +faststart \
                 output.mp4
+
             fi
 
           fi
+
+          if [ ! -s "output.mp4" ]; then
+            echo "❌ لم يتم إنشاء output.mp4."
+            exit 1
+          fi
+
+          echo "✅ تم إنشاء الفيديو النهائي."
+          ls -lh output.mp4
 
       - name: Send result to Telegram
         env:
@@ -669,4 +933,19 @@ jobs:
       - name: Clean files
         if: always()
         run: |
-          rm -f input.mkv subtitle.srt output.mp4 send.py
+          rm -f \
+            input.mkv \
+            subtitle.srt \
+            subtitle.ass \
+            subtitle.ssa \
+            output.mp4 \
+            send.py \
+            download_video.py \
+            download_subtitle.py \
+            selected_font.txt \
+            font_source \
+            watermark_source
+
+          rm -rf \
+            custom_fonts \
+            watermark_extract
