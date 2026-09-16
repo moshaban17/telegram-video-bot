@@ -84,35 +84,16 @@ def github_headers():
 
 
 def dispatch_workflow(inputs):
-    if not GH_TOKEN:
-        return None, "GH_TOKEN غير موجود."
-
+    if not GH_TOKEN: return None, "GH_TOKEN غير موجود."
     clean_inputs = {}
-
     for key, value in inputs.items():
-        if value is None:
+        if value is None or str(value).strip() == "":
             value = ""
-
         clean_inputs[str(key)] = str(value)
-
-    payload = {
-        "ref": "main",
-        "inputs": clean_inputs,
-    }
-
+    payload = {"ref": "main", "inputs": clean_inputs}
     try:
-        response = requests.post(
-            workflow_url(),
-            headers=github_headers(),
-            json=payload,
-            timeout=30,
-        )
-
+        response = requests.post(workflow_url(), headers=github_headers(), json=payload, timeout=30)
         return response, None
-
-    except requests.RequestException as exc:
-        return None, str(exc)
-
     except Exception as exc:
         return None, str(exc)
 
