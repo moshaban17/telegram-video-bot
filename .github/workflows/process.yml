@@ -1,189 +1,41 @@
 name: Video Processor
-
 on:
   workflow_dispatch:
     inputs:
-      video_url:
-        description: "Video URL"
-        required: false
-        default: ""
-
-      subtitle_url:
-        description: "Subtitle URL"
-        required: false
-        default: ""
-
-      resolution:
-        description: "Resolution"
-        required: true
-        type: choice
-        options:
-          - same
-          - 1080p
-          - 720p
-          - 480p
-          - 360p
-        default: same
-
-      chat_id:
-        description: "Telegram Chat ID"
-        required: true
-        default: ""
-
-      operation:
-        description: "Operation"
-        required: true
-        type: choice
-        options:
-          - video
-          - translate_srt
-        default: video
-
-      telegram_message_id:
-        description: "Telegram video message ID"
-        required: false
-        type: string
-        default: ""
-
-      telegram_message_date:
-        description: "Telegram video message date"
-        required: false
-        type: string
-        default: ""
-
-      subtitle_message_id:
-        description: "Telegram subtitle message ID"
-        required: false
-        type: string
-        default: ""
-
-      subtitle_message_date:
-        description: "Telegram subtitle message date"
-        required: false
-        type: string
-        default: ""
-
-      subtitle_type:
-        description: "Subtitle type"
-        required: false
-        type: string
-        default: "srt"
-
-      font_message_id:
-        description: "Telegram font message ID"
-        required: false
-        type: string
-        default: ""
-
-      font_message_date:
-        description: "Telegram font message date"
-        required: false
-        type: string
-        default: ""
-
-      font_size:
-        description: "Subtitle font size"
-        required: false
-        type: string
-        default: "26"
-
-      font_color:
-        description: "Subtitle color"
-        required: false
-        type: string
-        default: "white"
-
-      subtitle_outline:
-        description: "Subtitle outline"
-        required: false
-        type: string
-        default: "0.5"
-
-      subtitle_box:
-        description: "Subtitle box"
-        required: false
-        type: string
-        default: "off"
-
-      watermark_message_id:
-        description: "Telegram watermark message ID"
-        required: false
-        type: string
-        default: ""
-
-      watermark_message_date:
-        description: "Telegram watermark message date"
-        required: false
-        type: string
-        default: ""
-
-      watermark_position:
-        description: "Watermark position"
-        required: false
-        type: string
-        default: "top_left"
-
-      watermark_size:
-        description: "Watermark size"
-        required: false
-        type: string
-        default: "20"
-
-      watermark_enabled:
-        description: "Watermark enabled"
-        required: false
-        type: string
-        default: "false"
-
+      video_url: {description: "Video URL", required: false, default: ""}
+      subtitle_url: {description: "Subtitle URL", required: false, default: ""}
+      resolution: {description: "Resolution", required: true, type: choice, options: [same, 1080p, 720p, 480p, 360p], default: same}
+      chat_id: {description: "Telegram Chat ID", required: true, default: ""}
+      operation: {description: "Operation", required: true, type: choice, options: [video, translate_srt], default: video}
+      telegram_message_id: {description: "Telegram video message ID", required: false, type: string, default: ""}
+      telegram_message_date: {description: "Telegram video message date", required: false, type: string, default: ""}
+      subtitle_message_id: {description: "Telegram subtitle message ID", required: false, type: string, default: ""}
+      subtitle_message_date: {description: "Telegram subtitle message date", required: false, type: string, default: ""}
+      subtitle_type: {description: "Subtitle type", required: false, type: string, default: "srt"}
+      font_message_id: {description: "Telegram font message ID", required: false, type: string, default: ""}
+      font_message_date: {description: "Telegram font message date", required: false, type: string, default: ""}
+      font_size: {description: "Subtitle font size", required: false, type: string, default: "26"}
+      font_color: {description: "Subtitle color", required: false, type: string, default: "white"}
+      subtitle_outline: {description: "Subtitle outline", required: false, type: string, default: "0.5"}
+      subtitle_box: {description: "Subtitle box", required: false, type: string, default: "off"}
+      watermark_message_id: {description: "Telegram watermark message ID", required: false, type: string, default: ""}
+      watermark_message_date: {description: "Telegram watermark message date", required: false, type: string, default: ""}
+      watermark_position: {description: "Watermark position", required: false, type: string, default: "top_left"}
+      watermark_size: {description: "Watermark size", required: false, type: string, default: "20"}
+      watermark_enabled: {description: "Watermark enabled", required: false, type: string, default: "false"}
 
 jobs:
   process:
     runs-on: ubuntu-latest
-
     steps:
-
-      # =====================================================
-      # CHECKOUT
-      # =====================================================
-
       - name: Checkout repository
         uses: actions/checkout@v4
-
-
-      # =====================================================
-      # INSTALL
-      # =====================================================
-
       - name: Install FFmpeg and tools
         run: |
           sudo apt-get update
-
-          sudo apt-get install -y \
-            ffmpeg \
-            wget \
-            curl \
-            file \
-            fontconfig \
-            fonts-noto-core \
-            fonts-noto-cjk \
-            fonts-noto-extra \
-            unrar \
-            tesseract-ocr \
-            tesseract-ocr-eng \
-            tesseract-ocr-ara
-
+          sudo apt-get install -y ffmpeg wget curl file fontconfig fonts-noto-core fonts-noto-cjk fonts-noto-extra unrar tesseract-ocr tesseract-ocr-eng tesseract-ocr-ara
           python -m pip install --upgrade pip
-
-          python -m pip install \
-            "telethon<2" \
-            cryptg \
-            requests
-
-
-      # =====================================================
-      # SHOW OPERATION
-      # =====================================================
-
+          python -m pip install "telethon<2" cryptg requests
       - name: Show operation
         run: |
           echo "======================================"
@@ -191,1670 +43,186 @@ jobs:
           echo "Resolution: ${{ inputs.resolution }}"
           echo "Chat ID: ${{ inputs.chat_id }}"
           echo "======================================"
-
-
-      # =====================================================
-      # DOWNLOAD VIDEO
-      # =====================================================
-
       - name: Download video
         if: ${{ inputs.operation == 'video' || inputs.operation == 'video_ocr' || inputs.operation == 'audio_srt' }}
-        env:
-          API_ID: ${{ secrets.API_ID }}
-          API_HASH: ${{ secrets.API_HASH }}
-          TG_SESSION: ${{ secrets.TG_SESSION }}
-          BOT_USERNAME: "@CinmalekHardsubBot"
-          VIDEO_URL: ${{ inputs.video_url }}
-          VIDEO_MESSAGE_ID: ${{ inputs.telegram_message_id }}
-          VIDEO_MESSAGE_DATE: ${{ inputs.telegram_message_date }}
+        env: {API_ID: "${{ secrets.API_ID }}", API_HASH: "${{ secrets.API_HASH }}", TG_SESSION: "${{ secrets.TG_SESSION }}", BOT_USERNAME: "@CinmalekHardsubBot", VIDEO_URL: "${{ inputs.video_url }}", VIDEO_MESSAGE_ID: "${{ inputs.telegram_message_id }}", VIDEO_MESSAGE_DATE: "${{ inputs.telegram_message_date }}"}
         run: |
-
           if [ -n "$VIDEO_URL" ]; then
-
-            echo "🔗 تحميل الفيديو من الرابط المباشر..."
-
-            wget \
-              --continue \
-              --tries=3 \
-              --timeout=60 \
-              --read-timeout=60 \
-              --progress=dot:giga \
-              -O input.mkv \
-              "$VIDEO_URL"
-
+            wget --continue --tries=3 --timeout=60 -O input.mkv "$VIDEO_URL"
           else
-
-            echo "📱 تحميل الفيديو من Telegram..."
-
-            cat > download_video.py <<'PY'
-          import os
-          import asyncio
-          from datetime import datetime, timezone
-
-          from telethon import TelegramClient
-          from telethon.sessions import StringSession
-
-
-          async def main():
-
-              client = TelegramClient(
-                  StringSession(os.environ["TG_SESSION"]),
-                  int(os.environ["API_ID"]),
-                  os.environ["API_HASH"]
-              )
-
-              await client.start()
-
-              bot = await client.get_entity(
-                  os.environ["BOT_USERNAME"]
-              )
-
-              message = None
-
-              message_id = os.environ.get(
-                  "VIDEO_MESSAGE_ID",
-                  ""
-              ).strip()
-
-              if message_id:
-
-                  print(
-                      "🔎 Using exact video Message ID:",
-                      message_id
-                  )
-
-                  message = await client.get_messages(
-                      bot,
-                      ids=int(message_id)
-                  )
-
-                  if message and message.media:
-
-                      print(
-                          "✅ Video found:",
-                          message.id
-                      )
-
-                  else:
-
-                      message = None
-
-              if message is None:
-
-                  target_date = os.environ.get(
-                      "VIDEO_MESSAGE_DATE",
-                      ""
-                  ).strip()
-
-                  if not target_date:
-
-                      raise RuntimeError(
-                          "لم يتم إرسال بيانات رسالة الفيديو."
-                      )
-
-                  target_dt = datetime.fromisoformat(
-                      target_date
-                  )
-
-                  if target_dt.tzinfo is None:
-                      target_dt = target_dt.replace(
-                          tzinfo=timezone.utc
-                      )
-
-                  recent = await client.get_messages(
-                      bot,
-                      limit=100
-                  )
-
-                  media_messages = [
-                      m for m in recent
-                      if m.media and m.date
-                  ]
-
-                  if not media_messages:
-
-                      raise RuntimeError(
-                          "لم يتم العثور على Media."
-                      )
-
-                  message = min(
-                      media_messages,
-                      key=lambda m:
-                      abs(
-                          (
-                              m.date -
-                              target_dt
-                          ).total_seconds()
-                      )
-                  )
-
-                  difference = abs(
-                      (
-                          message.date -
-                          target_dt
-                      ).total_seconds()
-                  )
-
-                  print(
-                      "Selected message:",
-                      message.id
-                  )
-
-                  print(
-                      "Difference:",
-                      difference,
-                      "seconds"
-                  )
-
-                  if difference > 120:
-
-                      raise RuntimeError(
-                          "لم يتم العثور على رسالة الفيديو الصحيحة."
-                      )
-
-              if not message or not message.media:
-
-                  raise RuntimeError(
-                      "رسالة الفيديو غير صالحة."
-                  )
-
-              await client.download_media(
-                  message,
-                  file="input.mkv"
-              )
-
-              await client.disconnect()
-
-
-          asyncio.run(main())
-          PY
-
-            python download_video.py
-
-          fi
-
-
-          if [ ! -s input.mkv ]; then
-            echo "❌ فشل تحميل الفيديو."
-            exit 1
-          fi
-
-          echo "✅ تم تحميل الفيديو."
-          ls -lh input.mkv
-
-
-      # =====================================================
-      # DOWNLOAD SUBTITLE
-      # =====================================================
-
-      - name: Download subtitle
-        if: ${{ inputs.operation == 'video' }}
-        env:
-          API_ID: ${{ secrets.API_ID }}
-          API_HASH: ${{ secrets.API_HASH }}
-          TG_SESSION: ${{ secrets.TG_SESSION }}
-          BOT_USERNAME: "@CinmalekHardsubBot"
-          SUBTITLE_MESSAGE_ID: ${{ inputs.subtitle_message_id }}
-          SUBTITLE_MESSAGE_DATE: ${{ inputs.subtitle_message_date }}
-          SUBTITLE_TYPE: ${{ inputs.subtitle_type }}
-          SUBTITLE_URL: ${{ inputs.subtitle_url }}
-        run: |
-
-          if [ -n "$SUBTITLE_MESSAGE_ID" ]; then
-
-            echo "📄 تحميل الترجمة من Telegram..."
-
-            cat > download_subtitle.py <<'PY'
-          import os
-          import asyncio
-          from datetime import datetime, timezone
-
-          from telethon import TelegramClient
-          from telethon.sessions import StringSession
-
-
-          async def main():
-
-              client = TelegramClient(
-                  StringSession(os.environ["TG_SESSION"]),
-                  int(os.environ["API_ID"]),
-                  os.environ["API_HASH"]
-              )
-
-              await client.start()
-
-              bot = await client.get_entity(
-                  os.environ["BOT_USERNAME"]
-              )
-
-              message_id = os.environ.get(
-                  "SUBTITLE_MESSAGE_ID",
-                  ""
-              ).strip()
-
-              message = None
-
-              if message_id:
-
-                  message = await client.get_messages(
-                      bot,
-                      ids=int(message_id)
-                  )
-
-              if not message:
-
-                  target_date = os.environ.get(
-                      "SUBTITLE_MESSAGE_DATE",
-                      ""
-                  ).strip()
-
-                  if not target_date:
-
-                      raise RuntimeError(
-                          "لم يتم العثور على ملف الترجمة."
-                      )
-
-                  target_dt = datetime.fromisoformat(
-                      target_date
-                  )
-
-                  if target_dt.tzinfo is None:
-                      target_dt = target_dt.replace(
-                          tzinfo=timezone.utc
-                      )
-
-                  recent = await client.get_messages(
-                      bot,
-                      limit=100
-                  )
-
-                  candidates = [
-                      m for m in recent
-                      if m.media and m.date
-                  ]
-
-                  if not candidates:
-
-                      raise RuntimeError(
-                          "لا توجد ملفات ترجمة."
-                      )
-
-                  message = min(
-                      candidates,
-                      key=lambda m:
-                      abs(
-                          (
-                              m.date -
-                              target_dt
-                          ).total_seconds()
-                      )
-                  )
-
-                  difference = abs(
-                      (
-                          message.date -
-                          target_dt
-                      ).total_seconds()
-                  )
-
-                  if difference > 120:
-
-                      raise RuntimeError(
-                          "لم يتم العثور على ملف الترجمة الصحيح."
-                      )
-
-              subtitle_type = os.environ.get(
-                  "SUBTITLE_TYPE",
-                  "srt"
-              ).lower()
-
-              if subtitle_type == "ass":
-                  extension = ".ass"
-              elif subtitle_type == "ssa":
-                  extension = ".ssa"
-              else:
-                  extension = ".srt"
-
-              await client.download_media(
-                  message,
-                  file="subtitle" + extension
-              )
-
-              await client.disconnect()
-
-
-          asyncio.run(main())
-          PY
-
-            python download_subtitle.py
-
-
-          elif [ -n "$SUBTITLE_URL" ]; then
-
-            echo "🔗 تحميل الترجمة من الرابط..."
-
-            wget \
-              --tries=3 \
-              --timeout=60 \
-              -O subtitle.srt \
-              "$SUBTITLE_URL"
-
-          fi
-
-
-          ls -lah subtitle.* 2>/dev/null || true
-
-
-      # =====================================================
-      # DOWNLOAD FONT
-      # =====================================================
-
-      - name: Download font
-        if: ${{ inputs.operation == 'video' }}
-        env:
-          API_ID: ${{ secrets.API_ID }}
-          API_HASH: ${{ secrets.API_HASH }}
-          TG_SESSION: ${{ secrets.TG_SESSION }}
-          BOT_USERNAME: "@CinmalekHardsubBot"
-          FONT_MESSAGE_ID: ${{ inputs.font_message_id }}
-        run: |
-
-          if [ -n "$FONT_MESSAGE_ID" ]; then
-
-            echo "🔤 تحميل الخط..."
-
-            python download_font.py
-
-          else
-
-            echo "ℹ️ لا يوجد خط مخصص."
-
-          fi
-
-
-      # =====================================================
-      # PREPARE FONT
-      # =====================================================
-
-      - name: Prepare font
-        if: ${{ inputs.operation == 'video' }}
-        run: |
-
-          if [ -f font_source ]; then
-
-            mkdir -p custom_fonts
-
-            if file font_source | grep -qi "RAR"; then
-
-              echo "📦 فك RAR الخاص بالخط..."
-
-              unrar x -o+ \
-                font_source \
-                custom_fonts/
-
-            else
-
-              cp font_source custom_fonts/
-
+            cat > download_video.py  download_subtitle.py  download_font.py  selected_font.txt
+            if [ -s selected_font.txt ]; then
+              FONT_PATH="$(cat selected_font.txt)"
+              FONT_NAME="$(fc-scan --format='%{family}' "$FONT_PATH" | head -n 1)"
+              if [ -n "$FONT_NAME" ]; then
+                mkdir -p "$HOME/.local/share/fonts"; cp "$FONT_PATH" "$HOME/.local/share/fonts/"; fc-cache -f "$HOME/.local/share/fonts"
+                echo "FONT_PATH=$FONT_PATH" >> "$GITHUB_ENV"; echo "FONT_NAME=$FONT_NAME" >> "$GITHUB_ENV"
+              fi
             fi
-
-
-            find custom_fonts \
-              -type f \
-              \( \
-                -iname "*.ttf" \
-                -o -iname "*.otf" \
-              \) \
-              | head -n 1 \
-              > selected_font.txt
-
-
-            if [ ! -s selected_font.txt ]; then
-
-              echo "❌ لم يتم العثور على خط."
-
-              exit 1
-
-            fi
-
-
-            FONT_PATH="$(cat selected_font.txt)"
-
-
-            FONT_NAME="$(
-              fc-scan \
-                --format='%{family}' \
-                "$FONT_PATH" \
-                | head -n 1
-            )"
-
-
-            if [ -z "$FONT_NAME" ]; then
-
-              echo "❌ تعذر معرفة اسم الخط."
-
-              exit 1
-
-            fi
-
-
-            mkdir -p \
-              "$HOME/.local/share/fonts"
-
-
-            cp "$FONT_PATH" \
-              "$HOME/.local/share/fonts/"
-
-
-            fc-cache -f \
-              "$HOME/.local/share/fonts"
-
-
-            echo "FONT_PATH=$FONT_PATH" \
-              >> "$GITHUB_ENV"
-
-            echo "FONT_NAME=$FONT_NAME" \
-              >> "$GITHUB_ENV"
-
-
-            echo "✅ الخط: $FONT_NAME"
-
           fi
-
-
-      # =====================================================
-      # DOWNLOAD WATERMARK
-      # =====================================================
-
       - name: Download watermark
         if: ${{ inputs.operation == 'video' }}
-        env:
-          API_ID: ${{ secrets.API_ID }}
-          API_HASH: ${{ secrets.API_HASH }}
-          TG_SESSION: ${{ secrets.TG_SESSION }}
-          BOT_USERNAME: "@CinmalekHardsubBot"
-          WATERMARK_MESSAGE_ID: ${{ inputs.watermark_message_id }}
-          WATERMARK_MESSAGE_DATE: ${{ inputs.watermark_message_date }}
-          WATERMARK_ENABLED: ${{ inputs.watermark_enabled }}
+        env: {API_ID: "${{ secrets.API_ID }}", API_HASH: "${{ secrets.API_HASH }}", TG_SESSION: "${{ secrets.TG_SESSION }}", BOT_USERNAME: "@CinmalekHardsubBot", WATERMARK_MESSAGE_ID: "${{ inputs.watermark_message_id }}", WATERMARK_ENABLED: "${{ inputs.watermark_enabled }}"}
         run: |
-
-          if [ "$WATERMARK_ENABLED" = "true" ] && \
-             [ -n "$WATERMARK_MESSAGE_ID" ]; then
-
-            echo "🖼️ تحميل العلامة المائية..."
-
-            python download_watermark.py
-
-          fi
-
-
-      # =====================================================
-      # PREPARE WATERMARK
-      # =====================================================
-
-      - name: Prepare watermark
-        if: ${{ inputs.operation == 'video' }}
-        run: |
-
-          if [ -f watermark_source ]; then
-
-            if file watermark_source | grep -qi "RAR"; then
-
-              mkdir -p watermark_extract
-
-              unrar x -o+ \
-                watermark_source \
-                watermark_extract/
-
-              find watermark_extract \
-                -type f \
-                \( \
-                  -iname "*.png" \
-                  -o -iname "*.jpg" \
-                  -o -iname "*.jpeg" \
-                  -o -iname "*.webp" \
-                \) \
-                | head -n 1 \
-                | xargs -r -I{} \
-                  cp "{}" watermark.png
-
-            else
-
-              cp watermark_source watermark.png
-
-            fi
-
-
-            if [ ! -f watermark.png ]; then
-
-              echo "❌ لم يتم العثور على صورة العلامة."
-
-              exit 1
-
-            fi
-
-
-            echo "✅ تم تجهيز العلامة المائية."
-
-          fi
-
-
-      # =====================================================
-      # SETTINGS
-      # =====================================================
-
-      - name: Set processing settings
-        if: ${{ inputs.operation == 'video' }}
-        env:
-          FONT_SIZE: ${{ inputs.font_size }}
-          FONT_COLOR: ${{ inputs.font_color }}
-          SUBTITLE_OUTLINE: ${{ inputs.subtitle_outline }}
-          SUBTITLE_BOX: ${{ inputs.subtitle_box }}
-          WATERMARK_POSITION: ${{ inputs.watermark_position }}
-          WATERMARK_SIZE: ${{ inputs.watermark_size }}
-          WATERMARK_ENABLED: ${{ inputs.watermark_enabled }}
-        run: |
-
-          echo "FONT_SIZE=$FONT_SIZE" >> "$GITHUB_ENV"
-          echo "FONT_COLOR=$FONT_COLOR" >> "$GITHUB_ENV"
-          echo "SUBTITLE_OUTLINE=$SUBTITLE_OUTLINE" >> "$GITHUB_ENV"
-          echo "SUBTITLE_BOX=$SUBTITLE_BOX" >> "$GITHUB_ENV"
-          echo "WATERMARK_POSITION=$WATERMARK_POSITION" >> "$GITHUB_ENV"
-          echo "WATERMARK_SIZE=$WATERMARK_SIZE" >> "$GITHUB_ENV"
-          echo "WATERMARK_ENABLED=$WATERMARK_ENABLED"
-
-
-      # =====================================================
-      # RESOLUTION
-      # =====================================================
-
+          if [ "$WATERMARK_ENABLED" = "true" ] && [ -n "$WATERMARK_MESSAGE_ID" ] && [ "$WATERMARK_MESSAGE_ID" != "\"\"" ]; then
+            cat > download_watermark.py  "$GITHUB_ENV"; echo "FONT_COLOR=${{ inputs.font_color }}" >> "$GITHUB_ENV"
+          echo "SUBTITLE_OUTLINE=${{ inputs.subtitle_outline }}" >> "$GITHUB_ENV"; echo "SUBTITLE_BOX=${{ inputs.subtitle_box }}" >> "$GITHUB_ENV"
+          echo "WATERMARK_POSITION=${{ inputs.watermark_position }}" >> "$GITHUB_ENV"; echo "WATERMARK_SIZE=${{ inputs.watermark_size }}" >> "$GITHUB_ENV"
+          echo "WATERMARK_ENABLED=${{ inputs.watermark_enabled }}" >> "$GITHUB_ENV"
       - name: Set resolution
         if: ${{ inputs.operation == 'video' }}
         run: |
-
           case "${{ inputs.resolution }}" in
-
-            same)
-              echo "SCALE_FILTER=null" >> "$GITHUB_ENV"
-              ;;
-
-            1080p)
-              echo "SCALE_FILTER=scale=-2:1080" >> "$GITHUB_ENV"
-              ;;
-
-            720p)
-              echo "SCALE_FILTER=scale=-2:720" >> "$GITHUB_ENV"
-              ;;
-
-            480p)
-              echo "SCALE_FILTER=scale=-2:480" >> "$GITHUB_ENV"
-              ;;
-
-            360p)
-              echo "SCALE_FILTER=scale=-2:360" >> "$GITHUB_ENV"
-              ;;
-
-            *)
-              echo "❌ دقة غير صحيحة."
-              exit 1
-              ;;
-
+            same)  echo "SCALE_FILTER=null" >> "$GITHUB_ENV" ;;
+            1080p) echo "SCALE_FILTER=scale=-2:1080" >> "$GITHUB_ENV" ;;
+            720p)  echo "SCALE_FILTER=scale=-2:720" >> "$GITHUB_ENV" ;;
+            480p)  echo "SCALE_FILTER=scale=-2:480" >> "$GITHUB_ENV" ;;
+            360p)  echo "SCALE_FILTER=scale=-2:360" >> "$GITHUB_ENV" ;;
+            *)     echo "❌ دقة غير صحيحة."; exit 1 ;;
           esac
-
-
-      # =====================================================
-      # PROCESS VIDEO
-      # =====================================================
-
       - name: Process video
         if: ${{ inputs.operation == 'video' }}
         run: |
-
           FILTERS=""
-
-
-          if [ -f subtitle.ass ]; then
-
-            echo "🎬 ASS detected - preserving original styles"
-
-            FILTERS="subtitles=subtitle.ass"
-
-
-          elif [ -f subtitle.ssa ]; then
-
-            echo "🎬 SSA detected - preserving original styles"
-
-            FILTERS="subtitles=subtitle.ssa"
-
-
+          if [ -f subtitle.ass ]; then FILTERS="subtitles='subtitle.ass'"
+          elif [ -f subtitle.ssa ]; then FILTERS="subtitles='subtitle.ssa'"
           elif [ -f subtitle.srt ]; then
-
-            echo "🎬 SRT detected"
-
             COLOR="&H00FFFFFF"
-
-
             case "$FONT_COLOR" in
-
-              white)
-                COLOR="&H00FFFFFF"
-                ;;
-
-              yellow)
-                COLOR="&H0000FFFF"
-                ;;
-
-              cyan)
-                COLOR="&H00FFFF00"
-                ;;
-
-              green)
-                COLOR="&H0000FF00"
-                ;;
-
-              red)
-                COLOR="&H000000FF"
-                ;;
-
-              *)
-                COLOR="&H00FFFFFF"
-                ;;
-
+              white)  COLOR="&H00FFFFFF" ;;
+              yellow) COLOR="&H0000FFFF" ;;
+              cyan)   COLOR="&H00FFFF00" ;;
+              green)  COLOR="&H0000FF00" ;;
+              red)    COLOR="&H000000FF" ;;
+              *)      COLOR="&H00FFFFFF" ;;
             esac
-
-
+            REAL_FONT="${FONT_NAME:-Noto Sans CJK HK}"
             if [ "$SUBTITLE_BOX" = "on" ]; then
-
-              FORCE_STYLE="FontName=${FONT_NAME:-Noto Sans},FontSize=${FONT_SIZE},PrimaryColour=${COLOR},OutlineColour=&H00000000,Outline=0,Shadow=0,BorderStyle=3,BackColour=&H00000000,Alignment=2"
-
+              FORCE_STYLE="FontName=${REAL_FONT},FontSize=${FONT_SIZE},PrimaryColour=${COLOR},OutlineColour=&H00000000,Outline=0,Shadow=0,BorderStyle=3,BackColour=&H00000000,Alignment=2"
             else
-
-              FORCE_STYLE="FontName=${FONT_NAME:-Noto Sans},FontSize=${FONT_SIZE},PrimaryColour=${COLOR},OutlineColour=&H00000000,Outline=${SUBTITLE_OUTLINE},Shadow=0,Alignment=2"
-
+              FORCE_STYLE="FontName=${REAL_FONT},FontSize=${FONT_SIZE},PrimaryColour=${COLOR},OutlineColour=&H00000000,Outline=${SUBTITLE_OUTLINE},Shadow=0,Alignment=2"
             fi
-
-
-                        FILTERS="subtitles='subtitle.srt':force_style='${FORCE_STYLE}'"
+            FILTERS="subtitles='subtitle.srt':force_style='${FORCE_STYLE}'"
           fi
-
-          if [ -n "$FILTERS" ] && [ "$SCALE_FILTER" != "null" ]; then
-            FILTERS="${FILTERS},${SCALE_FILTER}"
-          elif [ -z "$FILTERS" ] && [ "$SCALE_FILTER" != "null" ]; then
-            FILTERS="$SCALE_FILTER"
-          fi
-
-
-
-          if [ "$WATERMARK_ENABLED" = "true" ] && \
-             [ -f watermark.png ]; then
-
-            echo "🖼️ إضافة العلامة المائية"
-
-
+          if [ -n "$FILTERS" ] && [ "$SCALE_FILTER" != "null" ]; then FILTERS="${FILTERS},${SCALE_FILTER}"
+          elif [ -z "$FILTERS" ] && [ "$SCALE_FILTER" != "null" ]; then FILTERS="$SCALE_FILTER"; fi
+          if [ "$WATERMARK_ENABLED" = "true" ] && [ -f watermark.png ]; then
             WM_SIZE="${WATERMARK_SIZE:-20}"
-
-
             case "$WATERMARK_POSITION" in
-
-              top_left)
-                WM_OVERLAY="20:20"
-                ;;
-
-              top_right)
-                WM_OVERLAY="main_w-overlay_w-20:20"
-                ;;
-
-              bottom_left)
-                WM_OVERLAY="20:main_h-overlay_h-20"
-                ;;
-
-              bottom_right)
-                WM_OVERLAY="main_w-overlay_w-20:main_h-overlay_h-20"
-                ;;
-
-              *)
-                WM_OVERLAY="20:20"
-                ;;
-
+              top_left)     WM_OVERLAY="20:20" ;;
+              top_right)    WM_OVERLAY="main_w-overlay_w-20:20" ;;
+              bottom_left)  WM_OVERLAY="20:main_h-overlay_h-20" ;;
+              bottom_right) WM_OVERLAY="main_w-overlay_w-20:main_h-overlay_h-20" ;;
+              *)            WM_OVERLAY="20:20" ;;
             esac
-
-
-            if [ -n "$FILTERS" ]; then
-
-              ffmpeg -y \
-                -i input.mkv \
-                -i watermark.png \
-                -filter_complex \
-                "[0:v]${FILTERS}[base];[1:v][base]scale2ref=w=rw*${WM_SIZE}/100:h=-1[wm][video];[video][wm]overlay=${WM_OVERLAY}[v]" \
-                -map "[v]" \
-                -map 0:a? \
-                -c:v libx264 \
-                -preset veryfast \
-                -crf 23 \
-                -c:a aac \
-                -b:a 192k \
-                -movflags +faststart \
-                output.mp4
-
-            else
-
-              ffmpeg -y \
-                -i input.mkv \
-                -i watermark.png \
-                -filter_complex \
-                "[1:v][0:v]scale2ref=w=rw*${WM_SIZE}/100:h=-1[wm][video];[video][wm]overlay=${WM_OVERLAY}[v]" \
-                -map "[v]" \
-                -map 0:a? \
-                -c:v libx264 \
-                -preset veryfast \
-                -crf 23 \
-                -c:a aac \
-                -b:a 192k \
-                -movflags +faststart \
-                output.mp4
-
-            fi
-
-
+            if [ -n "$FILTERS" ]; then ffmpeg -y -i input.mkv -i watermark.png -filter_complex "[0:v]${FILTERS}[base];[1:v][base]scale2ref=w=rw*${WM_SIZE}/100:h=-1[wm][video];[video][wm]overlay=${WM_OVERLAY}[v]" -map "[v]" -map 0:a? -c:v libx264 -preset veryfast -crf 23 -c:a aac -b:a 192k -movflags +faststart output.mp4
+            else ffmpeg -y -i input.mkv -i watermark.png -filter_complex "[1:v][0:v]scale2ref=w=rw*${WM_SIZE}/100:h=-1[wm][video];[video][wm]overlay=${WM_OVERLAY}[v]" -map "[v]" -map 0:a? -c:v libx264 -preset veryfast -crf 23 -c:a aac -b:a 192k -movflags +faststart output.mp4; fi
           else
-
-            echo "🎬 معالجة الفيديو بدون علامة مائية"
-
-
-            if [ -n "$FILTERS" ]; then
-
-              ffmpeg -y \
-                -i input.mkv \
-                -vf "$FILTERS" \
-                -map 0:v:0 \
-                -map 0:a? \
-                -c:v libx264 \
-                -preset veryfast \
-                -crf 23 \
-                -c:a aac \
-                -b:a 192k \
-                -movflags +faststart \
-                output.mp4
-
-            else
-
-              ffmpeg -y \
-                -i input.mkv \
-                -map 0:v:0 \
-                -map 0:a? \
-                -c:v libx264 \
-                -preset veryfast \
-                -crf 23 \
-                -c:a aac \
-                -b:a 192k \
-                -movflags +faststart \
-                output.mp4
-
-            fi
-
+            if [ -n "$FILTERS" ]; then ffmpeg -y -i input.mkv -vf "${FILTERS}" -map 0:v:0 -map 0:a? -c:v libx264 -preset veryfast -crf 23 -c:a aac -b:a 192k -movflags +faststart output.mp4
+            else ffmpeg -y -i input.mkv -map 0:v:0 -map 0:a? -c:v libx264 -preset veryfast -crf 23 -c:a aac -b:a 192k -movflags +faststart output.mp4; fi
           fi
-
-
-          if [ ! -s output.mp4 ]; then
-
-            echo "❌ لم يتم إنشاء الفيديو."
-
-            exit 1
-
-          fi
-
-
-          echo "✅ تم إنشاء output.mp4"
-
-          ls -lh output.mp4
-
-
-      # =====================================================
-      # SPEECH TO SRT
-      # =====================================================
-
       - name: Speech to SRT
         if: ${{ inputs.operation == 'audio_srt' }}
         run: |
-
-          python -m pip install \
-            faster-whisper
-
-
+          python -m pip install faster-whisper
           cat > speech_to_srt.py <<'PY'
           from faster_whisper import WhisperModel
-
-
-          model = WhisperModel(
-              "small",
-              device="cpu",
-              compute_type="int8"
-          )
-
-
-          segments, info = model.transcribe(
-              "input.mkv",
-              beam_size=5,
-              vad_filter=True
-          )
-
-
-          def timestamp(seconds):
-
-              milliseconds = int(
-                  round(seconds * 1000)
-              )
-
-              hours = milliseconds // 3600000
-
-              milliseconds %= 3600000
-
-              minutes = milliseconds // 60000
-
-              milliseconds %= 60000
-
-              seconds = milliseconds // 1000
-
-              milliseconds %= 1000
-
-              return (
-                  f"{hours:02d}:"
-                  f"{minutes:02d}:"
-                  f"{seconds:02d},"
-                  f"{milliseconds:03d}"
-              )
-
-
-          with open(
-              "speech_result.srt",
-              "w",
-              encoding="utf-8"
-          ) as f:
-
-              index = 1
-
-              for segment in segments:
-
-                  text = segment.text.strip()
-
-                  if not text:
-                      continue
-
-                  f.write(
-                      f"{index}\n"
-                  )
-
-                  f.write(
-                      f"{timestamp(segment.start)} --> "
-                      f"{timestamp(segment.end)}\n"
-                  )
-
-                  f.write(
-                      text
-                  )
-
-                  f.write(
-                      "\n\n"
-                  )
-
-                  index += 1
-
-
-          print("✅ تم إنشاء speech_result.srt")
+          model = WhisperModel("small", device="cpu", compute_type="int8")
+          segments, info = model.transcribe("input.mkv", beam_size=5, vad_filter=True)
+          def timestamp(sec):
+              ms = int(round(sec * 1000))
+              return f"{ms//3600000:02d}:{(ms%3600000)//60000:02d}:{(ms%60000)//1000:02d},{ms%1000:03d}"
+          with open("speech_result.srt", "w", encoding="utf-8") as f:
+              for i, seg in enumerate(segments, 1):
+                  t = seg.text.strip()
+                  if t: f.write(f"{i}\n{timestamp(seg.start)} --> {timestamp(seg.end)}\n{t}\n\n")
           PY
-
-
           python speech_to_srt.py
-
-
-      # =====================================================
-      # OCR TO SRT
-      # =====================================================
-
       - name: OCR to SRT
         if: ${{ inputs.operation == 'video_ocr' }}
         run: |
-
-          python -m pip install \
-            opencv-python-headless
-
-
+          python -m pip install opencv-python-headless
           cat > ocr_to_srt.py <<'PY'
-          import cv2
-          import subprocess
-          import re
-
-
-          video = "input.mkv"
-          output = "ocr_result.srt"
-
-
-          cap = cv2.VideoCapture(video)
-
-
-          if not cap.isOpened():
-
-              raise RuntimeError(
-                  "تعذر فتح الفيديو."
-              )
-
-
-          fps = cap.get(
-              cv2.CAP_PROP_FPS
-          )
-
-          if fps <= 0:
-              fps = 25
-
-
-          frame_count = int(
-              cap.get(
-                  cv2.CAP_PROP_FRAME_COUNT
-              )
-          )
-
-
-          duration = (
-              frame_count / fps
-              if frame_count > 0
-              else 0
-          )
-
-
-          def timestamp(seconds):
-
-              ms = int(
-                  round(seconds * 1000)
-              )
-
-              h = ms // 3600000
-
-              ms %= 3600000
-
-              m = ms // 60000
-
-              ms %= 60000
-
-              s = ms // 1000
-
-              ms %= 1000
-
-              return (
-                  f"{h:02d}:"
-                  f"{m:02d}:"
-                  f"{s:02d},"
-                  f"{ms:03d}"
-              )
-
-
-          results = []
-
-          interval = 1.0
-
-          current = 0.0
-
-          last_text = ""
-
-
+          import cv2, subprocess, re
+          cap = cv2.VideoCapture("input.mkv")
+          fps = cap.get(cv2.CAP_PROP_FPS) or 25; duration = cap.get(cv2.CAP_PROP_FRAME_COUNT) / fps
+          def timestamp(sec):
+              ms = int(round(sec * 1000))
+              return f"{ms//3600000:02d}:{(ms%3600000)//60000:02d}:{(ms%60000)//1000:02d},{ms%1000:03d}"
+          results, current, last_text = [], 0.0, ""
           while current < duration:
-
-              cap.set(
-                  cv2.CAP_PROP_POS_MSEC,
-                  current * 1000
-              )
-
-              ok, frame = cap.read()
-
-              if not ok:
-                  break
-
-
-              height, width = frame.shape[:2]
-
-
-              crop = frame[
-                  int(height * 0.55):
-                  int(height * 0.98),
-                  0:width
-              ]
-
-
-              cv2.imwrite(
-                  "ocr_frame.png",
-                  crop
-              )
-
-
-              process = subprocess.run(
-                  [
-                      "tesseract",
-                      "ocr_frame.png",
-                      "stdout",
-                      "-l",
-                      "ara+eng",
-                      "--psm",
-                      "6"
-                  ],
-                  capture_output=True,
-                  text=True
-              )
-
-
-              text = re.sub(
-                  r"\s+",
-                  " ",
-                  process.stdout
-              ).strip()
-
-
-              if text and text != last_text:
-
-                  results.append(
-                      (
-                          current,
-                          current + interval,
-                          text
-                      )
-                  )
-
-                  last_text = text
-
-
-              current += interval
-
-
+              cap.set(cv2.CAP_PROP_POS_MSEC, current * 1000); ok, frame = cap.read()
+              if not ok: break
+              h, w = frame.shape[:2]; cv2.imwrite("ocr_frame.png", frame[int(h*0.55):int(h*0.98), 0:w])
+              proc = subprocess.run(["tesseract", "ocr_frame.png", "stdout", "-l", "ara+eng", "--psm", "6"], capture_output=True, text=True)
+              text = re.sub(r"\s+", " ", proc.stdout).strip()
+              if text and text != last_text: results.append((current, current + 1.0, text)); last_text = text
+              current += 1.0
           cap.release()
-
-
-          with open(
-              output,
-              "w",
-              encoding="utf-8"
-          ) as f:
-
-              index = 1
-
-              for start, end, text in results:
-
-                  f.write(
-                      f"{index}\n"
-                  )
-
-                  f.write(
-                      f"{timestamp(start)} --> "
-                      f"{timestamp(end)}\n"
-                  )
-
-                  f.write(
-                      text
-                  )
-
-                  f.write(
-                      "\n\n"
-                  )
-
-                  index += 1
-
-
-          print("✅ تم إنشاء ocr_result.srt")
+          with open("ocr_result.srt", "w", encoding="utf-8") as f:
+              for i, (s, e, t) in enumerate(results, 1): f.write(f"{i}\n{timestamp(s)} --> {timestamp(e)}\n{t}\n\n")
           PY
-
-
           python ocr_to_srt.py
-
-
-      # =====================================================
-      # DOWNLOAD SRT USING TELEGRAM BOT FILE_ID
-      # =====================================================
-
       - name: Download SRT for translation
         if: ${{ inputs.operation == 'translate_srt' }}
-        env:
-          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          SRT_FILE_ID: ${{ inputs.srt_file_id }}
+        env: {BOT_TOKEN: "${{ secrets.BOT_TOKEN }}", SRT_FILE_ID: "${{ inputs.srt_file_id }}"}
         run: |
-
-          if [ -z "$BOT_TOKEN" ]; then
-
-            echo "❌ BOT_TOKEN غير موجود."
-
-            exit 1
-
-          fi
-
-
-          if [ -z "$SRT_FILE_ID" ]; then
-
-            echo "❌ srt_file_id غير موجود."
-
-            exit 1
-
-          fi
-
-
-          echo "📄 الحصول على مسار ملف SRT من Telegram..."
-
-
-          FILE_INFO="$(
-            curl -fsS \
-              "https://api.telegram.org/bot${BOT_TOKEN}/getFile?file_id=${SRT_FILE_ID}"
-          )"
-
-
-          echo "$FILE_INFO"
-
-
-          FILE_PATH="$(
-            python -c '
-          import json
-          import sys
-
-          data = json.load(sys.stdin)
-
-          if not data.get("ok"):
-              raise SystemExit(1)
-
-          print(data["result"]["file_path"])
-          ' <<< "$FILE_INFO"
-          )"
-
-
-          if [ -z "$FILE_PATH" ]; then
-
-            echo "❌ لم يتم الحصول على file_path."
-
-            exit 1
-
-          fi
-
-
-          echo "✅ File path: $FILE_PATH"
-
-
-          curl -fL \
-            -o source.srt \
-            "https://api.telegram.org/file/bot${BOT_TOKEN}/${FILE_PATH}"
-
-
-          if [ ! -s source.srt ]; then
-
-            echo "❌ ملف SRT فارغ أو لم يتم تحميله."
-
-            exit 1
-
-          fi
-
-
-          echo "✅ تم تحميل SRT بنجاح."
-
-          ls -lh source.srt
-
-
-      # =====================================================
-      # GEMINI TRANSLATION
-      # =====================================================
-
+          FILE_INFO="$(curl -fsS "https://telegram.org{BOT_TOKEN}/getFile?file_id=${SRT_FILE_ID}")"
+          FILE_PATH="$(python -c 'import json, sys; print(json.load(sys.stdin)["result"]["file_path"])' <<< "$FILE_INFO")"
+          curl -fL -o source.srt "https://telegram.org{BOT_TOKEN}/${FILE_PATH}"
       - name: Translate SRT with Gemini
         if: ${{ inputs.operation == 'translate_srt' }}
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        env: {GEMINI_API_KEY: "${{ secrets.GEMINI_API_KEY }}"}
         run: |
-
-          if [ -z "$GEMINI_API_KEY" ]; then
-
-            echo "❌ GEMINI_API_KEY غير موجود."
-
-            exit 1
-
-          fi
-
-
           cat > translate_srt.py <<'PY'
-          import os
-          import re
-          import time
-          import requests
-
-
+          import os, re, time, requests
           API_KEY = os.environ["GEMINI_API_KEY"]
-
-          INPUT = "source.srt"
-          OUTPUT = "translated.srt"
-
-          MODEL = "gemini-2.5-flash"
-
-          URL = (
-              "https://generativelanguage.googleapis.com/"
-              "v1beta/models/"
-              f"{MODEL}:generateContent"
-              f"?key={API_KEY}"
-          )
-
-
-          def split_blocks(text):
-
-              return re.split(
-                  r"\n\s*\n",
-                  text.strip()
-              )
-
-
+          URL = f"https://googleapis.com{API_KEY}"
           def translate_text(text):
-
-              prompt = f"""
-أنت مترجم محترف للترجمة السينمائية.
-
-ترجم نصوص الترجمة التالية إلى العربية الفصحى الواضحة والطبيعية.
-
-القواعد:
-
-1. لا تغير أرقام الترجمة.
-2. لا تغير التوقيت.
-3. لا تحذف أي كتلة.
-4. لا تضف شرحًا.
-5. ترجم الحوار فقط.
-6. حافظ على أسماء الشخصيات والأسماء الخاصة حسب السياق.
-7. حافظ على رموز ♪ و ♫ كما هي.
-8. حافظ على وسوم HTML مثل <i> و </font> وأي وسوم موجودة.
-9. لا تترجم الأكواد أو الوسوم.
-10. حافظ على عدد أسطر كل كتلة قدر الإمكان.
-11. استخدم العربية الفصحى.
-12. اجعل الترجمة طبيعية وواضحة وليست ترجمة آلية ركيكة.
-13. حافظ على نفس عدد كتل SRT.
-14. لا تضع أي Markdown أو ``` حول النتيجة.
-
-أعد الترجمة فقط.
-
-النص:
-
-{text}
-"""
-
-
-              payload = {
-                  "contents": [
-                      {
-                          "parts": [
-                              {
-                                  "text": prompt
-                              }
-                          ]
-                      }
-                  ]
-              }
-
-
-              response = requests.post(
-                  URL,
-                  json=payload,
-                  timeout=180
-              )
-
-
-              if response.status_code != 200:
-
-                  raise RuntimeError(
-                      "Gemini API error: "
-                      + response.text[:1000]
-                  )
-
-
-              data = response.json()
-
-
-              return (
-                  data["candidates"][0]
-                  ["content"]["parts"][0]["text"]
-                  .strip()
-              )
-
-
-          with open(
-              INPUT,
-              "r",
-              encoding="utf-8-sig"
-          ) as f:
-
-              source = f.read()
-
-
-          blocks = split_blocks(source)
-
-          translated_blocks = []
-
-          total = len(blocks)
-
-
-          for start in range(
-              0,
-              total,
-              40
-          ):
-
-              batch = blocks[
-                  start:start + 40
-              ]
-
-
-              batch_text = "\n\n".join(
-                  batch
-              )
-
-
-              print(
-                  f"Translating subtitles "
-                  f"{start + 1}-"
-                  f"{min(start + 40, total)} "
-                  f"of {total}"
-              )
-
-
-              translated = translate_text(
-                  batch_text
-              )
-
-
-              translated = re.sub(
-                  r"^```(?:srt)?\s*",
-                  "",
-                  translated,
-                  flags=re.IGNORECASE
-              )
-
-              translated = re.sub(
-                  r"\s*```$",
-                  "",
-                  translated
-              ).strip()
-
-
-              new_blocks = split_blocks(
-                  translated
-              )
-
-
-              if len(new_blocks) != len(batch):
-
-                  print(
-                      "⚠️ عدد الكتل غير مطابق، إعادة المحاولة..."
-                  )
-
-
-                  translated = translate_text(
-                      batch_text
-                  )
-
-
-                  translated = re.sub(
-                      r"^```(?:srt)?\s*",
-                      "",
-                      translated,
-                      flags=re.IGNORECASE
-                  )
-
-                  translated = re.sub(
-                      r"\s*```$",
-                      "",
-                      translated
-                  ).strip()
-
-
-                  new_blocks = split_blocks(
-                      translated
-                  )
-
-
-              if len(new_blocks) != len(batch):
-
-                  raise RuntimeError(
-                      "عدد كتل SRT بعد الترجمة لا يطابق المصدر."
-                  )
-
-
-              translated_blocks.extend(
-                  new_blocks
-              )
-
-
-              time.sleep(1)
-
-
-          final_text = "\n\n".join(
-              translated_blocks
-          )
-
-
-          with open(
-              OUTPUT,
-              "w",
-              encoding="utf-8"
-          ) as f:
-
-              f.write(final_text)
-              f.write("\n")
-
-
-          print(
-              "✅ تم إنشاء translated.srt"
-          )
+              prompt = f"أنت مترجم محترف للترجمة السينمائية. ترجم النصوص التالية للعربية الفصحى مع الحفاظ على كتل التوقيت والوسوم بالكامل وبدون ماركداون:\n\n{text}"
+              res = requests.post(URL, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=180)
+              return res.json()["candidates"]["content"]["parts"]["text"].strip()
+          with open("source.srt", "r", encoding="utf-8-sig") as f: source = f.read()
+          blocks = re.split(r"\n\s*\n", source.strip()); trans_blocks = []
+          for start in range(0, len(blocks), 40):
+              batch = blocks[start:start+40]; trans = translate_text("\n\n".join(batch))
+              trans = re.sub(r"^```(?:srt)?\s*|\s*```$", "", trans, flags=re.IGNORECASE).strip()
+              trans_blocks.extend(re.split(r"\n\s*\n", trans)); time.sleep(1)
+          with open("translated.srt", "w", encoding="utf-8") as f: f.write("\n\n".join(trans_blocks) + "\n")
           PY
-
-
           python translate_srt.py
-
-
-          if [ ! -s translated.srt ]; then
-
-            echo "❌ لم يتم إنشاء ملف الترجمة."
-
-            exit 1
-
-          fi
-
-
-      # =====================================================
-      # SEND SRT RESULT
-      # =====================================================
-
       - name: Send SRT result
         if: ${{ inputs.operation == 'audio_srt' || inputs.operation == 'video_ocr' || inputs.operation == 'translate_srt' }}
-        env:
-          API_ID: ${{ secrets.API_ID }}
-          API_HASH: ${{ secrets.API_HASH }}
-          TG_SESSION: ${{ secrets.TG_SESSION }}
-          CHAT_ID: ${{ inputs.chat_id }}
-          OPERATION: ${{ inputs.operation }}
+        env: {API_ID: "${{ secrets.API_ID }}", API_HASH: "${{ secrets.API_HASH }}", TG_SESSION: "${{ secrets.TG_SESSION }}", CHAT_ID: "${{ inputs.chat_id }}", OPERATION: "${{ inputs.operation }}"}
         run: |
-
-          if [ "$OPERATION" = "audio_srt" ]; then
-
-            RESULT="speech_result.srt"
-
-          elif [ "$OPERATION" = "video_ocr" ]; then
-
-            RESULT="ocr_result.srt"
-
-          elif [ "$OPERATION" = "translate_srt" ]; then
-
-            RESULT="translated.srt"
-
-          else
-
-            echo "❌ عملية غير معروفة."
-
-            exit 1
-
-          fi
-
-
-          if [ ! -s "$RESULT" ]; then
-
-            echo "❌ ملف النتيجة غير موجود."
-
-            exit 1
-
-          fi
-
-
           cat > send_srt.py <<'PY'
-          import os
-          import asyncio
-
+          import os, asyncio
           from telethon import TelegramClient
           from telethon.sessions import StringSession
-
-
           async def main():
-
-              client = TelegramClient(
-                  StringSession(os.environ["TG_SESSION"]),
-                  int(os.environ["API_ID"]),
-                  os.environ["API_HASH"]
-              )
-
-              await client.start()
-
-
-              operation = os.environ["OPERATION"]
-
-
-              if operation == "audio_srt":
-
-                  filename = "speech_result.srt"
-
-                  caption = (
-                      "🎙️ تم تحويل الكلام إلى SRT بنجاح."
-                  )
-
-              elif operation == "video_ocr":
-
-                  filename = "ocr_result.srt"
-
-                  caption = (
-                      "👁️ تم استخراج كلام الشاشة إلى SRT."
-                  )
-
-              else:
-
-                  filename = "translated.srt"
-
-                  caption = (
-                      "🌐 تمت ترجمة ملف SRT إلى العربية الفصحى."
-                  )
-
-
-              await client.send_file(
-                  int(os.environ["CHAT_ID"]),
-                  filename,
-                  caption=caption,
-                  force_document=True
-              )
-
-
-              await client.disconnect()
-
-
+              client = TelegramClient(StringSession(os.environ["TG_SESSION"]), int(os.environ["API_ID"]), os.environ["API_HASH"])
+              await client.start(); op = os.environ["OPERATION"]
+              fn = "speech_result.srt" if op=="audio_srt" else ("ocr_result.srt" if op=="video_ocr" else "translated.srt")
+              cap = "🎙️ تم تحويل الكلام" if op=="audio_srt" else ("👁️ تم استخراج الكلام" if op=="video_ocr" else "🌐 تمت الترجمة")
+              await client.send_file(int(os.environ["CHAT_ID"]), fn, caption=cap, force_document=True); await client.disconnect()
           asyncio.run(main())
           PY
-
-
           python send_srt.py
-
-
-      # =====================================================
-      # SEND VIDEO
-      # =====================================================
-
       - name: Send video to Telegram
         if: ${{ inputs.operation == 'video' }}
-        env:
-          API_ID: ${{ secrets.API_ID }}
-          API_HASH: ${{ secrets.API_HASH }}
-          TG_SESSION: ${{ secrets.TG_SESSION }}
-          CHAT_ID: ${{ inputs.chat_id }}
+        env: {API_ID: "${{ secrets.API_ID }}", API_HASH: "${{ secrets.API_HASH }}", TG_SESSION: "${{ secrets.TG_SESSION }}", CHAT_ID: "${{ inputs.chat_id }}"}
         run: |
-
-          if [ ! -s output.mp4 ]; then
-
-            echo "❌ output.mp4 غير موجود."
-
-            exit 1
-
-          fi
-
-
           cat > send_video.py <<'PY'
-          import os
-          import asyncio
-
+          import os, asyncio
           from telethon import TelegramClient
           from telethon.sessions import StringSession
-
-
           async def main():
-
-              client = TelegramClient(
-                  StringSession(os.environ["TG_SESSION"]),
-                  int(os.environ["API_ID"]),
-                  os.environ["API_HASH"]
-              )
-
+              client = TelegramClient(StringSession(os.environ["TG_SESSION"]), int(os.environ["API_ID"]), os.environ["API_HASH"])
               await client.start()
-
-
-              await client.send_file(
-                  int(os.environ["CHAT_ID"]),
-                  "output.mp4",
-                  caption="🎬 تم تجهيز الفيديو بنجاح.",
-                  video=True,
-                  supports_streaming=True
-              )
-
-
-              await client.disconnect()
-
-
+              await client.send_file(int(os.environ["CHAT_ID"]), "output.mp4", caption="🎬 تم تجهيز الفيديو بنجاح.", video=True, supports_streaming=True); await client.disconnect()
           asyncio.run(main())
           PY
-
-
           python send_video.py
-
-
-      # =====================================================
-      # CLEAN
-      # =====================================================
-
       - name: Clean files
         if: always()
-        run: |
-
-          rm -f \
-            input.mkv \
-            output.mp4 \
-            source.srt \
-            translated.srt \
-            speech_result.srt \
-            ocr_result.srt \
-            subtitle.srt \
-            subtitle.ass \
-            subtitle.ssa \
-            font_source \
-            watermark_source \
-            watermark.png \
-            selected_font.txt \
-            send_video.py \
-            send_srt.py \
-            download_video.py \
-            download_subtitle.py \
-            download_srt.py \
-            download_watermark.py \
-            download_font.py \
-            speech_to_srt.py \
-            ocr_to_srt.py \
-            translate_srt.py \
-            ocr_frame.png
-
-          rm -rf \
-            custom_fonts \
-            watermark_extract
+        run: rm -rf input.mkv output.mp4 source.srt translated.srt speech_result.srt ocr_result.srt subtitle.* font_source watermark_source *.png *.txt *.py custom_fonts watermark_extract
