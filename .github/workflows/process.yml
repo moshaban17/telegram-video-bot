@@ -874,22 +874,15 @@ jobs:
             fi
 
 
-            FILTERS="subtitles=subtitle.srt:force_style='${FORCE_STYLE}'"
-
+                        FILTERS="subtitles='subtitle.srt':force_style='${FORCE_STYLE}'"
           fi
 
-
-          if [ -n "$FILTERS" ] && \
-             [ "$SCALE_FILTER" != "null" ]; then
-
+          if [ -n "$FILTERS" ] && [ "$SCALE_FILTER" != "null" ]; then
             FILTERS="${FILTERS},${SCALE_FILTER}"
-
-          elif [ -z "$FILTERS" ] && \
-               [ "$SCALE_FILTER" != "null" ]; then
-
+          elif [ -z "$FILTERS" ] && [ "$SCALE_FILTER" != "null" ]; then
             FILTERS="$SCALE_FILTER"
-
           fi
+
 
 
           if [ "$WATERMARK_ENABLED" = "true" ] && \
