@@ -4,45 +4,40 @@ on:
   workflow_dispatch:
     inputs:
       video_url:
-        description: "Direct video URL"
+        description: "Video URL"
         required: false
-        type: string
         default: ""
 
       subtitle_url:
-        description: "Direct subtitle URL"
+        description: "Subtitle URL"
         required: false
-        type: string
         default: ""
 
       resolution:
-        description: "Video resolution"
+        description: "Resolution"
         required: true
         type: choice
         options:
-          - "same"
-          - "1080p"
-          - "720p"
-          - "480p"
-          - "360p"
-        default: "same"
+          - same
+          - 1080p
+          - 720p
+          - 480p
+          - 360p
+        default: same
 
       chat_id:
-        description: "Telegram chat ID"
+        description: "Telegram Chat ID"
         required: true
-        type: string
+        default: ""
 
       operation:
-        description: "Processing operation"
-        required: false
-        type: string
-        default: "video"
-
-      srt_file_id:
-        description: "Telegram SRT file ID"
-        required: false
-        type: string
-        default: ""
+        description: "Operation"
+        required: true
+        type: choice
+        options:
+          - video
+          - translate_srt
+        default: video
 
       telegram_message_id:
         description: "Telegram video message ID"
