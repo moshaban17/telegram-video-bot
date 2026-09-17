@@ -51,9 +51,9 @@ on:
         required: false
         type: string
         default: "0.5"
-
-      subtitle_box:
-        description: "Subtitle box"
+        
+            subtitle_box:
+        description: "Subtitle Box"
         required: false
         type: choice
         options:
