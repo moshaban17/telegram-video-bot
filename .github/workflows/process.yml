@@ -57,9 +57,9 @@ name: Video Processor
         required: false
         type: choice
         options:
-          - off
-          - on
-        default: off
+          - "off"
+          - "on"
+        default: "off"
 
       watermark_message_id:
         description: "Telegram watermark message ID"
