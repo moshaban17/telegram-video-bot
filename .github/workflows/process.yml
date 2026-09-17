@@ -1,6 +1,6 @@
 name: Video Processor
 
-on:
+"on":
   workflow_dispatch:
     inputs:
       chat_id:
