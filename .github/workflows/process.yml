@@ -155,13 +155,16 @@ jobs:
         run: |
           cat > download_files.py <<'PY'
           import os
+          import asyncio
           from pathlib import Path
           from telethon import TelegramClient
 
           API_ID = int(os.environ["API_ID"])
           API_HASH = os.environ["API_HASH"]
           TG_SESSION = os.environ["TG_SESSION"]
+          BOT_TOKEN = os.environ["BOT_TOKEN"]
 
+          CHAT_ID = int(os.environ["CHAT_ID"])
           VIDEO_MESSAGE_ID = int(os.environ["VIDEO_MESSAGE_ID"])
           SUBTITLE_MESSAGE_ID = int(os.environ["SUBTITLE_MESSAGE_ID"])
           FONT_MESSAGE_ID = os.environ.get("FONT_MESSAGE_ID", "").strip()
@@ -176,29 +179,34 @@ jobs:
               app_version="1.0"
           )
 
+          async def get_message(message_id):
+              message = await client.get_messages(
+                  CHAT_ID,
+                  ids=message_id
+              )
+
+              if not message:
+                  raise RuntimeError(
+                      f"Message {message_id} was not found in chat {CHAT_ID}."
+                  )
+
+              return message
+
           async def main():
-              await client.start(
-                  bot_token=os.environ["BOT_TOKEN"]
-              )
+              await client.start(bot_token=BOT_TOKEN)
 
-              me = await client.get_me()
-              chat = me.id
+              video_msg = await get_message(VIDEO_MESSAGE_ID)
+              subtitle_msg = await get_message(SUBTITLE_MESSAGE_ID)
 
-              video_msg = await client.get_messages(
-                  chat,
-                  ids=VIDEO_MESSAGE_ID
-              )
+              if not video_msg.media:
+                  raise RuntimeError(
+                      f"Video message {VIDEO_MESSAGE_ID} has no media."
+                  )
 
-              subtitle_msg = await client.get_messages(
-                  chat,
-                  ids=SUBTITLE_MESSAGE_ID
-              )
-
-              if not video_msg or not video_msg.media:
-                  raise RuntimeError("Video message was not found.")
-
-              if not subtitle_msg or not subtitle_msg.media:
-                  raise RuntimeError("Subtitle message was not found.")
+              if not subtitle_msg.media:
+                  raise RuntimeError(
+                      f"Subtitle message {SUBTITLE_MESSAGE_ID} has no media."
+                  )
 
               video_path = await client.download_media(
                   video_msg,
@@ -209,6 +217,12 @@ jobs:
                   subtitle_msg,
                   file="subtitle_source"
               )
+
+              if not video_path:
+                  raise RuntimeError("Failed to download video.")
+
+              if not subtitle_path:
+                  raise RuntimeError("Failed to download subtitle.")
 
               print("VIDEO_PATH:", video_path)
               print("SUBTITLE_PATH:", subtitle_path)
@@ -224,46 +238,41 @@ jobs:
               )
 
               if FONT_MESSAGE_ID:
-                  font_msg = await client.get_messages(
-                      chat,
-                      ids=int(FONT_MESSAGE_ID)
-                  )
+                  font_msg = await get_message(int(FONT_MESSAGE_ID))
 
-                  if font_msg and font_msg.media:
+                  if font_msg.media:
                       font_path = await client.download_media(
                           font_msg,
                           file="font_source"
                       )
 
-                      print("FONT_PATH:", font_path)
-
-                      Path("font_path.txt").write_text(
-                          str(Path(font_path).resolve()),
-                          encoding="utf-8"
-                      )
+                      if font_path:
+                          print("FONT_PATH:", font_path)
+                          Path("font_path.txt").write_text(
+                              str(Path(font_path).resolve()),
+                              encoding="utf-8"
+                          )
 
               if WATERMARK_MESSAGE_ID:
-                  watermark_msg = await client.get_messages(
-                      chat,
-                      ids=int(WATERMARK_MESSAGE_ID)
+                  watermark_msg = await get_message(
+                      int(WATERMARK_MESSAGE_ID)
                   )
 
-                  if watermark_msg and watermark_msg.media:
+                  if watermark_msg.media:
                       watermark_path = await client.download_media(
                           watermark_msg,
                           file="watermark_source"
                       )
 
-                      print("WATERMARK_PATH:", watermark_path)
-
-                      Path("watermark_path.txt").write_text(
-                          str(Path(watermark_path).resolve()),
-                          encoding="utf-8"
-                      )
+                      if watermark_path:
+                          print("WATERMARK_PATH:", watermark_path)
+                          Path("watermark_path.txt").write_text(
+                              str(Path(watermark_path).resolve()),
+                              encoding="utf-8"
+                          )
 
               await client.disconnect()
 
-          import asyncio
           asyncio.run(main())
           PY
 
