@@ -39,7 +39,7 @@ name: Video Processor
         required: false
         type: string
         default: "26"
-
+        
       font_color:
         description: "Subtitle font color"
         required: false
@@ -51,8 +51,8 @@ name: Video Processor
         required: false
         type: string
         default: "0.5"
-        
-            subtitle_box:
+
+      subtitle_box:
         description: "Subtitle Box"
         required: false
         type: choice
