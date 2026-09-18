@@ -603,7 +603,6 @@ jobs:
           API_HASH: ${{ secrets.API_HASH }}
           TG_SESSION: ${{ secrets.TG_SESSION }}
           CHAT_ID: ${{ inputs.chat_id }}
-          CHAT_ID: ${{ inputs.chat_id }}
 
         run: |
           cat > send_result.py <<'PY'
