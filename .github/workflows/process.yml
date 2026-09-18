@@ -94,6 +94,8 @@ name: Video Processor
 jobs:
   process:
     runs-on: ubuntu-latest
+    env:
+      CHAT_ID: ${{ inputs.chat_id }}
 
     steps:
       - name: Install dependencies
@@ -117,7 +119,6 @@ jobs:
           API_HASH: ${{ secrets.API_HASH }}
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           TG_SESSION: ${{ secrets.TG_SESSION }}
-          CHAT_ID: ${{ inputs.chat_id }}
         run: |
           set -e
 
@@ -147,7 +148,6 @@ jobs:
           API_HASH: ${{ secrets.API_HASH }}
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           TG_SESSION: ${{ secrets.TG_SESSION }}
-          CHAT_ID: ${{ inputs.chat_id }}
 
           VIDEO_MESSAGE_ID: ${{ inputs.video_message_id }}
           SUBTITLE_MESSAGE_ID: ${{ inputs.subtitle_message_id }}
@@ -602,7 +602,6 @@ jobs:
           API_ID: ${{ secrets.API_ID }}
           API_HASH: ${{ secrets.API_HASH }}
           TG_SESSION: ${{ secrets.TG_SESSION }}
-          CHAT_ID: ${{ inputs.chat_id }}
 
         run: |
           cat > send_result.py <<'PY'
