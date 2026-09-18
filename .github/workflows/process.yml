@@ -560,40 +560,44 @@ jobs:
 
             FILTER="[0:v]$SUB_FILTER[subbed];[1:v]format=rgba[wm];[subbed][wm]overlay=${OX}:${OY}:format=auto[vout]"
 
-            ffmpeg -y \
-              -i "$VIDEO_PATH" \
-              -loop 1 \
-              -i watermark_scaled.png \
-              -filter_complex "$FILTER" \
-              -map "[vout]" \
-              -map 0:a? \
-              -c:v libx264 \
-              -preset veryfast \
-              -crf 20 \
-              -pix_fmt yuv420p \
-              -c:a aac \
-              -b:a 192k \
-              -movflags +faststart \
-              -shortest \
-              output.mp4
+                      ffmpeg -y \
+            -i "$VIDEO_PATH" \
+            -loop 1 \
+            -i watermark_scaled.png \
+            -filter_complex "$FILTER" \
+            -map "[vout]" \
+            -map 0:a? \
+            -c:v libx264 \
+            -preset veryfast \
+            -b:v "${VIDEO_BITRATE}" \
+            -maxrate "${VIDEO_BITRATE}" \
+            -bufsize "$((VIDEO_BITRATE * 2))" \
+            -pix_fmt yuv420p \
+            -c:a aac \
+            -b:a 192k \
+            -movflags +faststart \
+            -shortest \
+            output.mp4
 
           else
 
             FILTER="[0:v]$SUB_FILTER[vout]"
 
-            ffmpeg -y \
-              -i "$VIDEO_PATH" \
-              -filter_complex "$FILTER" \
-              -map "[vout]" \
-              -map 0:a? \
-              -c:v libx264 \
-              -preset veryfast \
-              -crf 20 \
-              -pix_fmt yuv420p \
-              -c:a aac \
-              -b:a 192k \
-              -movflags +faststart \
-              output.mp4
+                      ffmpeg -y \
+            -i "$VIDEO_PATH" \
+            -filter_complex "$FILTER" \
+            -map "[vout]" \
+            -map 0:a? \
+            -c:v libx264 \
+            -preset veryfast \
+            -b:v "${VIDEO_BITRATE}" \
+            -maxrate "${VIDEO_BITRATE}" \
+            -bufsize "$((VIDEO_BITRATE * 2))" \
+            -pix_fmt yuv420p \
+            -c:a aac \
+            -b:a 192k \
+            -movflags +faststart \
+            output.mp4
 
           fi
 
