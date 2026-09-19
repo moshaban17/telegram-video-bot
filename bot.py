@@ -318,11 +318,11 @@ async def menu_button(
     # SUBTITLE
     # -----------------------------------------------------
 
-        if data == "subtitle":
+            if data == "subtitle":
         context.user_data["mode"] = "subtitle"
-        
+
         settings = load_settings()
-        
+
         font_name = "تم رفع خط مخصص" if settings.get("font_message_id") else "Noto Sans Arabic"
         font_color = settings.get("font_color", "white")
         font_size = settings.get("font_size", "26")
