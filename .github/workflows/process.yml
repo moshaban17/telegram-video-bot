@@ -403,10 +403,10 @@ jobs:
           TARGET_OUTPUT_BYTES=3500000000
           AUDIO_BITRATE=192000
 
-          DURATION_SECONDS=$(awk "BEGIN {printf "%d", $VIDEO_DURATION}")
+          DURATION_SECONDS=$(awk "BEGIN {printf \"%.0f\", $VIDEO_DURATION}")
           TOTAL_BITRATE=$((TARGET_OUTPUT_BYTES * 8 / DURATION_SECONDS))
           VIDEO_BITRATE=$((TOTAL_BITRATE - AUDIO_BITRATE))
-
+          
           if [ "$VIDEO_BITRATE" -lt 100000 ]; then
             VIDEO_BITRATE=100000
           fi
