@@ -605,47 +605,27 @@ jobs:
 
         run: |
           cat > send_result.py <<'PY'
-          import os
-          import asyncio
-          from telethon import TelegramClient
+import os
+import asyncio
+from telethon import TelegramClient
 
-          API_ID = int(os.environ["API_ID"])
-          API_HASH = os.environ["API_HASH"]
-          TG_SESSION = os.environ["TG_SESSION"]
-          CHAT_ID = int(os.environ["CHAT_ID"])
+API_ID = int(os.environ["API_ID"])
+API_HASH = os.environ["API_HASH"]
+TG_SESSION = os.environ["TG_SESSION"]
+CHAT_ID = int(os.environ["CHAT_ID"])
 
-          async def main():
-              client = TelegramClient(
-                  "sender",
-                  API_ID,
-                  API_HASH,
-                  device_model="GitHub Actions",
-                  system_version="Linux",
-                  app_version="1.0"
-              )
+async def main():
+    client = TelegramClient("sender", API_ID, API_HASH, device_model="GitHub Actions", system_version="Linux", app_version="1.0")
+    await client.start(bot_token=os.environ.get("BOT_TOKEN"))
+    await client.send_file(CHAT_ID, "output.mp4", caption="🎬 تم حرق الترجمة بنجاح.", video=True, supports_streaming=True, force_document=False)
+    await client.disconnect()
 
-              await client.start(
-                  bot_token=os.environ.get("BOT_TOKEN")
-              )
-
-              file_size = os.path.getsize("output.mp4")
-              print(f"Output size: {file_size} bytes ({file_size / (1024**3):.2f} GB)")
-
-              await client.send_file(
-                  CHAT_ID,
-                  "output.mp4",
-                  caption="🎬 تم حرق الترجمة بنجاح.",
-                  force_document=True
-              )
-
-              await client.disconnect()
-
-          asyncio.run(main())
-          PY
+asyncio.run(main())
+PY
 
           BOT_TOKEN="${{ secrets.BOT_TOKEN }}" python send_result.py
 
-      - name: Cleanup
+
         if: always()
         run: |
           rm -rf \
