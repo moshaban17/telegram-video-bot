@@ -319,64 +319,99 @@ async def menu_button(
     # -----------------------------------------------------
 
     if data == "subtitle":
-        context.user_data["mode"] = "subtitle"
+    context.user_data["mode"] = "subtitle"
 
-        keyboard = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton(
-                    "⚙️ إعدادات الخط",
-                    callback_data="font_settings"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    "🎨 إعدادات العلامة المائية",
-                    callback_data="watermark_settings"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    "▶️ بدء الحرق",
-                    callback_data="burn_ready"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    "⬅️ القائمة",
-                    callback_data="main_menu"
-                )
-            ],
-        ])
+    settings = load_settings()
 
-        await query.edit_message_text(
-            "📝 حرق الترجمة\n\n"
-            "أرسل الفيديو ثم ملف الترجمة.\n\n"
-            "يمكنك أيضًا ضبط الخط والعلامة المائية.",
-            reply_markup=keyboard
-        )
-        return
+    font_name = "تم رفع خط مخصص" if settings.get("font_message_id") else "Noto Sans Arabic"
+    font_color = settings.get("font_color", "white")
+    font_size = settings.get("font_size", "26")
+    box = settings.get("subtitle_box", "off")
+    watermark = settings.get("watermark_enabled", False)
+
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(
+                "➕ إضافة / تغيير الخط",
+                callback_data="font_upload"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                f"🎨 لون الخط: {font_color}",
+                callback_data="font_color_settings"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                f"🔠 حجم الخط: {font_size}",
+                callback_data="font_size_settings"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🖤 Outline: 0.5 (ثابت)",
+                callback_data="outline_fixed"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                f"⬛ Box: {'تشغيل' if box == 'on' else 'إيقاف'}",
+                callback_data="toggle_box"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                f"🖼️ العلامة المائية: {'تشغيل' if watermark else 'إيقاف'}",
+                callback_data="toggle_watermark"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "▶️ بدء الحرق",
+                callback_data="burn_ready"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "⬅️ القائمة",
+                callback_data="main_menu"
+            )
+        ],
+    ])
+
+    await query.edit_message_text(
+        "📝 إعدادات حرق الترجمة\n\n"
+        f"الخط: {font_name}\n"
+        f"حجم الخط: {font_size}\n"
+        f"لون الخط: {font_color}\n"
+        "Outline: 0.5\n"
+        f"Box: {'تشغيل' if box == 'on' else 'إيقاف'}\n"
+        f"العلامة المائية: {'تشغيل' if watermark else 'إيقاف'}\n\n"
+        "أرسل الفيديو ثم ملف الترجمة، أو اضبط الإعدادات أولًا.",
+        reply_markup=keyboard
+    )
 
     # -----------------------------------------------------
     # FONT SETTINGS
     # -----------------------------------------------------
 
     if data == "font_settings":
-        context.user_data["waiting_for"] = "font"
+    context.user_data["waiting_for"] = "font"
 
-        settings = get_settings()
+    settings = get_settings()
 
-        await query.edit_message_text(
-            "⚙️ إعدادات الخط\n\n"
-            f"الخط الحالي: "
-            f"{'محفوظ' if settings.get('font_message_id') else 'الافتراضي'}\n"
-            f"الحجم: {settings.get('font_size', '26')}\n"
-            f"اللون: {settings.get('font_color', 'white')}\n"
-            f"الحواف: {settings.get('subtitle_outline', '0.5')}\n"
-            f"الصندوق: {settings.get('subtitle_box', 'off')}\n\n"
-            "📁 أرسل ملف TTF أو OTF أو RAR يحتوي على الخط.\n"
-            "أو استخدم الإعدادات الحالية."
-        )
-        return
+    await query.edit_message_text(
+        "➕ إضافة / تغيير الخط\n\n"
+        f"الخط الحالي: "
+        f"{'محفوظ' if settings.get('font_message_id') else 'الافتراضي'}\n\n"
+        "📁 أرسل ملف الخط الآن.\n\n"
+        "الصيغ المدعومة:\n"
+        "• TTF\n"
+        "• OTF\n"
+        "• RAR"
+    )
+    return
 
     # -----------------------------------------------------
     # WATERMARK
