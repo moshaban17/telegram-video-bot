@@ -318,7 +318,7 @@ async def menu_button(
     # SUBTITLE
     # -----------------------------------------------------
 
-        if data == "subtitle":
+ if data == "subtitle":
         context.user_data["mode"] = "subtitle"
 
         settings = load_settings()
