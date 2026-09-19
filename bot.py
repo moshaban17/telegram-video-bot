@@ -318,79 +318,64 @@ async def menu_button(
     # SUBTITLE
     # -----------------------------------------------------
 
-    if data == "subtitle":
-    context.user_data["mode"] = "subtitle"
+        if data == "subtitle":
+        context.user_data["mode"] = "subtitle"
 
-    settings = load_settings()
+        settings = get_settings()
 
-    font_name = "تم رفع خط مخصص" if settings.get("font_message_id") else "Noto Sans Arabic"
-    font_color = settings.get("font_color", "white")
-    font_size = settings.get("font_size", "26")
-    box = settings.get("subtitle_box", "off")
-    watermark = settings.get("watermark_enabled", False)
+        font_name = "تم رفع خط مخصص" if settings.get("font_message_id") else "Noto Sans Arabic"
+        font_color = settings.get("font_color", "white")
+        font_size = settings.get("font_size", "26")
+        box = settings.get("subtitle_box", "off")
+        watermark = settings.get("watermark_enabled", False)
 
-    keyboard = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton(
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton(
                 "➕ إضافة / تغيير الخط",
                 callback_data="font_upload"
-            )
-        ],
-        [
-            InlineKeyboardButton(
+            )],
+            [InlineKeyboardButton(
                 f"🎨 لون الخط: {font_color}",
                 callback_data="font_color_settings"
-            )
-        ],
-        [
-            InlineKeyboardButton(
+            )],
+            [InlineKeyboardButton(
                 f"🔠 حجم الخط: {font_size}",
                 callback_data="font_size_settings"
-            )
-        ],
-        [
-            InlineKeyboardButton(
+            )],
+            [InlineKeyboardButton(
                 "🖤 Outline: 0.5 (ثابت)",
                 callback_data="outline_fixed"
-            )
-        ],
-        [
-            InlineKeyboardButton(
+            )],
+            [InlineKeyboardButton(
                 f"⬛ Box: {'تشغيل' if box == 'on' else 'إيقاف'}",
                 callback_data="toggle_box"
-            )
-        ],
-        [
-            InlineKeyboardButton(
+            )],
+            [InlineKeyboardButton(
                 f"🖼️ العلامة المائية: {'تشغيل' if watermark else 'إيقاف'}",
                 callback_data="toggle_watermark"
-            )
-        ],
-        [
-            InlineKeyboardButton(
+            )],
+            [InlineKeyboardButton(
                 "▶️ بدء الحرق",
                 callback_data="burn_ready"
-            )
-        ],
-        [
-            InlineKeyboardButton(
+            )],
+            [InlineKeyboardButton(
                 "⬅️ القائمة",
                 callback_data="main_menu"
-            )
-        ],
-    ])
+            )],
+        ])
 
-    await query.edit_message_text(
-        "📝 إعدادات حرق الترجمة\n\n"
-        f"الخط: {font_name}\n"
-        f"حجم الخط: {font_size}\n"
-        f"لون الخط: {font_color}\n"
-        "Outline: 0.5\n"
-        f"Box: {'تشغيل' if box == 'on' else 'إيقاف'}\n"
-        f"العلامة المائية: {'تشغيل' if watermark else 'إيقاف'}\n\n"
-        "أرسل الفيديو ثم ملف الترجمة، أو اضبط الإعدادات أولًا.",
-        reply_markup=keyboard
-    )
+        await query.edit_message_text(
+            "📝 إعدادات حرق الترجمة\n\n"
+            f"الخط: {font_name}\n"
+            f"حجم الخط: {font_size}\n"
+            f"لون الخط: {font_color}\n"
+            "Outline: 0.5\n"
+            f"Box: {'تشغيل' if box == 'on' else 'إيقاف'}\n"
+            f"العلامة المائية: {'تشغيل' if watermark else 'إيقاف'}\n\n"
+            "أرسل الفيديو ثم ملف الترجمة، أو اضبط الإعدادات أولًا.",
+            reply_markup=keyboard
+        )
+        return
 
     # -----------------------------------------------------
     # FONT SETTINGS
