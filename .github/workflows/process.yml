@@ -492,7 +492,7 @@ jobs:
           echo "Outline: $SUBTITLE_OUTLINE"
           echo "Box: $SUBTITLE_BOX"
 
-          FORCE_STYLE="FontName=$FONT_NAME,FontSize=$FONT_SIZE,PrimaryColour=$PRIMARY,OutlineColour=&H00000000,BorderStyle=$BORDER_STYLE,Outline=$SUBTITLE_OUTLINE,Shadow=0,Alignment=2,MarginV=28"
+                    FORCE_STYLE="FontName=$FONT_NAME,FontSize=$FONT_SIZE,PrimaryColour=$PRIMARY,OutlineColour=&H00000000,BorderStyle=$BORDER_STYLE,Outline=$SUBTITLE_OUTLINE,Shadow=0,Bold=0,Italic=0,Alignment=2,MarginV=18"
 
           case "$SUBTITLE_TYPE" in
             srt)
@@ -522,11 +522,11 @@ jobs:
             case "$WATERMARK_POSITION" in
               top_left)
                 OX=20
-                OY=20
+                OY=10
                 ;;
               top_right)
                 OX="main_w-overlay_w-20"
-                OY=20
+                OY=10
                 ;;
               bottom_left)
                 OX=20
@@ -542,7 +542,7 @@ jobs:
                 ;;
               *)
                 OX=20
-                OY=20
+                OY=10
                 ;;
             esac
 
