@@ -331,7 +331,7 @@ async def menu_button(
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton(
                 "➕ إضافة / تغيير الخط",
-                callback_data="font_upload"
+                callback_data="font_settings"
             )],
             [InlineKeyboardButton(
                 f"🎨 لون الخط: {font_color}",
