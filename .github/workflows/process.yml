@@ -643,7 +643,15 @@ jobs:
           async def main():
               client = TelegramClient("sender", API_ID, API_HASH, device_model="GitHub Actions", system_version="Linux", app_version="1.0")
               await client.start(bot_token=os.environ.get("BOT_TOKEN"))
-              await client.send_file(CHAT_ID, "output.mp4", caption="🎬 تم حرق الترجمة بنجاح.", video=True, supports_streaming=True, force_document=False)
+              await client.send_file(
+           CHAT_ID,
+          "output.mp4",
+          caption="🎬 تم حرق الترجمة بنجاح.",
+          video=True,
+          supports_streaming=True,
+          force_document=False,
+          part_size_kb=512
+          )
               await client.disconnect()
           
           asyncio.run(main())
@@ -651,7 +659,15 @@ jobs:
 
           BOT_TOKEN="${{ secrets.BOT_TOKEN }}" python send_result.py
 
-
+      - name: Save output video if sending fails
+        if: failure() && hashFiles('output.mp4') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: processed-video
+          path: output.mp4
+          retention-days: 3
+          if-no-files-found: ignore
+          
       - name: Cleanup
         if: always()
         run: |
