@@ -529,7 +529,7 @@ jobs:
             case "$WATERMARK_POSITION" in
               top_left)
                 OX=10
-                OY=0
+                OY=-15
                 ;;
               top_right)
                 OX="main_w-overlay_w-20"
