@@ -424,6 +424,7 @@ jobs:
           fi
 
           echo "MAX_OUTPUT_BYTES=$MAX_OUTPUT_BYTES" >> "$GITHUB_ENV"
+          echo "MAX_TARGET_BYTES=$MAX_TARGET_BYTES" >> "$GITHUB_ENV"
           echo "VIDEO_BITRATE=$VIDEO_BITRATE" >> "$GITHUB_ENV"
 
           echo "Video: ${VIDEO_WIDTH}x${VIDEO_HEIGHT}"
@@ -532,7 +533,7 @@ jobs:
 
             case "$WATERMARK_POSITION" in
               top_left)
-                OX=10
+                OX=20
                 OY=-15
                 ;;
               top_right)
@@ -627,15 +628,21 @@ jobs:
 
           if [ "$OUTPUT_SIZE_BYTES" -gt "$MAX_OUTPUT_BYTES" ]; then
             echo "Output exceeds the Telegram-safe limit. Re-encoding..."
+            echo "DEBUG VIDEO_BITRATE=$VIDEO_BITRATE"
+            echo "DEBUG OUTPUT_SIZE_BYTES=$OUTPUT_SIZE_BYTES"
+            echo "DEBUG MAX_TARGET_BYTES=$MAX_TARGET_BYTES"
 
             RETRY_BITRATE=$(awk -v bitrate="$VIDEO_BITRATE" \
               -v actual="$OUTPUT_SIZE_BYTES" \
               -v target="$MAX_TARGET_BYTES" \
-              'BEGIN { printf "%.0f", bitrate * target / actual * 0.95 }')
+              'BEGIN { if (actual > 0 && target > 0) printf "%.0f", bitrate * target / actual * 0.95; else print 0 }')
 
             if [ "$RETRY_BITRATE" -lt 100000 ]; then
-              RETRY_BITRATE=100000
+              echo "ERROR: Retry bitrate unexpectedly low: $RETRY_BITRATE"
+              exit 1
             fi
+
+            echo "Retry video bitrate: $RETRY_BITRATE"
 
             if [ "$WATERMARK_ENABLED" = "true" ]; then
               ffmpeg -y \
@@ -659,6 +666,11 @@ jobs:
                 -pix_fmt yuv420p -c:a aac -b:a 192k \
                 -movflags +faststart output_retry.mp4
             fi
+
+            test -s output_retry.mp4 || {
+              echo "Retry output was not created."
+              exit 1
+            }
 
             mv output_retry.mp4 output.mp4
             OUTPUT_SIZE_BYTES=$(stat -c%s output.mp4)
