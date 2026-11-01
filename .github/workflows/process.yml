@@ -596,7 +596,7 @@ jobs:
               ffmpeg -y \
                 -i "$VIDEO_PATH" -loop 1 -i watermark_scaled.png \
                 -filter_complex "$FILTER" -map "[vout]" \
-                -c:v libx264 -preset medium -b:v "$bitrate" \
+                -c:v libx264 -preset veryfast -b:v "$bitrate" \
                 -pix_fmt yuv420p -pass 1 -passlogfile "$passlog" \
                 -an -shortest -f null /dev/null
 
@@ -604,20 +604,20 @@ jobs:
                 -i "$VIDEO_PATH" -loop 1 -i watermark_scaled.png \
                 -filter_complex "$FILTER" \
                 -map "[vout]" -map 0:a? \
-                -c:v libx264 -preset medium -b:v "$bitrate" \
+                -c:v libx264 -preset veryfast -b:v "$bitrate" \
                 -pix_fmt yuv420p -pass 2 -passlogfile "$passlog" \
                 -c:a aac -b:a 192k -movflags +faststart \
                 -shortest output.mp4
             else
               ffmpeg -y -i "$VIDEO_PATH" \
                 -filter_complex "$FILTER" -map "[vout]" \
-                -c:v libx264 -preset medium -b:v "$bitrate" \
+                -c:v libx264 -preset veryfast -b:v "$bitrate" \
                 -pix_fmt yuv420p -pass 1 -passlogfile "$passlog" \
                 -an -f null /dev/null
 
               ffmpeg -y -i "$VIDEO_PATH" \
                 -filter_complex "$FILTER" -map "[vout]" -map 0:a? \
-                -c:v libx264 -preset medium -b:v "$bitrate" \
+                -c:v libx264 -preset veryfast -b:v "$bitrate" \
                 -pix_fmt yuv420p -pass 2 -passlogfile "$passlog" \
                 -c:a aac -b:a 192k -movflags +faststart output.mp4
             fi
